@@ -1,0 +1,56 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 *)",
+      "Bash(python *)",
+      "Bash(pytest *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git grep *)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(xxd *)",
+      "Bash(hexdump *)",
+      "Edit(src/**)",
+      "Edit(tests/**)",
+      "Edit(docs/**)",
+      "Edit(reviews/**)",
+      "Write(src/**)",
+      "Write(tests/**)",
+      "Write(docs/**)",
+      "Write(reviews/**)",
+      "WebFetch(domain:learn.microsoft.com)"
+    ],
+    "deny": [
+      "Edit(oracle/**)",
+      "Write(oracle/**)",
+      "Edit(.claude/**)",
+      "Write(.claude/**)",
+      "Edit(**/data/**)",
+      "Write(**/data/**)",
+      "Read(**/data/corpus/holdout/**)",
+      "Bash(git push*)",
+      "Bash(git checkout main*)",
+      "Bash(git merge*)",
+      "Bash(git reset --hard*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ratchet.sh",
+            "timeout": 900
+          }
+        ]
+      }
+    ]
+  }
+}
