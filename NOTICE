@@ -1,0 +1,23 @@
+msdoc — pure-Python text and image extractor for Microsoft Word 97–2003 (.doc)
+
+Licensed under the Mozilla Public License, v. 2.0 (see LICENSE).
+
+Parts of this project may be derived from LibreOffice
+(https://www.libreoffice.org, https://github.com/LibreOffice/core),
+which is licensed under the Mozilla Public License, v. 2.0.
+Files that contain such derived work say so in their header and name
+the LibreOffice source file(s) they are based on.
+
+Some of those LibreOffice source files in turn incorporate work licensed
+to the Apache Software Foundation (ASF) under one or more contributor
+license agreements and licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0). Where a derived file is
+based on such a LibreOffice file, it carries the same Apache notice.
+
+The file format is implemented according to the Microsoft Open
+Specifications [MS-DOC], [MS-ODRAW] and [MS-CFB], which are covered by the
+Microsoft Open Specification Promise.
+
+Test documents and LibreOffice-generated reference outputs used by the
+oracle (data/ directory) are NOT part of this distribution and are not
+redistributed with the package.

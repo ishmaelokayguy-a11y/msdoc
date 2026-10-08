@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "msdoc"
+version = "0.2.0"
+description = "Pure-Python text and image extractor for Microsoft Word 97-2003 (.doc) files"
+readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.9"
+dependencies = []          # pure Python, stdlib only
+
+[project.optional-dependencies]
+oracle = ["Pillow>=10", "rapidfuzz>=3"]
+test = ["pytest>=8", "olefile>=0.47"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

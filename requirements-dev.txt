@@ -1,0 +1,5 @@
+# oracle + tests (the library itself has no dependencies)
+Pillow>=9
+rapidfuzz>=2
+olefile>=0.46
+pytest>=7

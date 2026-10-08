@@ -1,0 +1,47 @@
+# ---- Test data, never publish: LibreOffice/POI/third-party documents, LibreOffice goldens, baselines, sources
+data/
+reports/
+logs/
+# Safety net: no Word/ODF/archive documents in the repo (add an explicit "!path" if a small fixture is intended)
+*.doc
+*.docx
+*.dot
+*.odt
+*.zip
+*.tar.gz
+
+# ---- Build artifacts (upload wheels to a GitHub Release instead)
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+msdoc-*/
+
+# ---- Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.env
+.env.*
+
+# ---- Agent working state (worktrees, local settings); .claude/settings.json and hooks stay tracked
+.claude/worktrees/
+.claude/settings.local.json
+
+# ---- Local experiments (e.g. third-party library comparisons)
+experiments/
+
+# ---- Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+Thumbs.db
