@@ -10,7 +10,8 @@
 | Word 6/95 (`nFib < 0x00C1`), Word 2.0 and older | `UnsupportedFormatError` |
 | An OLE file from another program (`.xls`, `.ppt`, `.msg`, …) | `UnsupportedFormatError` |
 | A password-protected document | `EncryptedDocumentError` (decryption is not implemented) |
-| `.docx`, `.rtf`, `.odt`, text, any non-OLE file | `NotOleFileError` |
+| `.rtf` (starts with `{\rtf`) | read by the RTF parser, see README |
+| `.docx`, `.odt`, text, any other non-OLE file | `NotOleFileError` |
 | A damaged `.doc` | `CorruptDocumentError`, or a partial result with an entry in `Document.warnings` |
 
 ## What is extracted

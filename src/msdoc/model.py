@@ -141,7 +141,7 @@ class Document:
     images: list[Image] = field(default_factory=list)
     nfib: Optional[int] = None
     format: str = "doc"
-    """"doc", "xls" or "ppt"."""
+    """"doc", "xls", "ppt" or "rtf"."""
     sheets: list = field(default_factory=list)
     """Worksheets (format == "xls")."""
     slides: list = field(default_factory=list)

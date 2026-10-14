@@ -3,7 +3,8 @@
 **English** · [Русский](README.ru.md)
 
 Extract **text, structure and images** from binary Word 97–2003 files (`.doc`) — and, with the same API,
-from Excel 97–2003 workbooks (`.xls`) and PowerPoint 97–2003 presentations (`.ppt`) — in pure Python.
+from Excel 97–2003 workbooks (`.xls`), PowerPoint 97–2003 presentations (`.ppt`) and Rich Text Format
+documents (`.rtf`) — in pure Python.
 The result is ready-to-use **Markdown** (headings, lists, HTML tables, links, footnotes) plus the
 pictures as a separate list of bytes with their MIME types. Built for feeding documents to LLMs.
 
@@ -30,7 +31,7 @@ positions) about 94 % on dev and 86 % on the held-out set — see [docs/en/quali
 - [Feeding an LLM](#feeding-an-llm)
 - [Plain text and all document parts](#plain-text-and-all-document-parts)
 - [Document structure (blocks)](#document-structure-blocks)
-- [Excel and PowerPoint](#excel-xls-and-powerpoint-ppt)
+- [Excel and PowerPoint](#excel-xls-and-powerpoint-ppt) · [RTF](#rich-text-format-rtf)
 - [Errors](#errors)
 - [Batch processing](#batch-processing)
 - [Limitations](#limitations)
@@ -41,7 +42,7 @@ positions) about 94 % on dev and 86 % on the held-out set — see [docs/en/quali
 From a prebuilt wheel (no dependencies, no internet needed):
 
 ```bash
-python3 -m pip install msdoc-0.3.0-py3-none-any.whl
+python3 -m pip install msdoc-0.4.0-py3-none-any.whl
 ```
 
 From source (just put `src/` on `PYTHONPATH`; installation is optional):
@@ -192,11 +193,31 @@ for slide in doc.slides:                        # Slide: index, texts, notes, co
 - Quality was measured against LibreOffice the same way as for `.doc` (`oracle/office_*.py`, see
   [docs/en/quality.md](docs/en/quality.md)): about 0.97 (`.xls`) and 0.92–0.95 (`.ppt`) on the combined text/picture score.
 
+## Rich Text Format (.rtf)
+
+An input that starts with `{\rtf` (a UTF-8 BOM and leading white space are tolerated) is read as RTF before
+the OLE check; `doc.format` is `"rtf"` and the result has the same shape as for `.doc`: `stories` (main,
+footnotes, endnotes, headers, comments, textboxes), `blocks` (headings from `\outlinelevel`, lists from
+`\listtable`/`\ls`/`\ilvl` and legacy `\pn`, tables with merged and nested cells, hyperlinks, footnote
+anchors) and `images` (`\pict` PNG/JPEG/EMF/WMF/DIB, hex or `\bin`; `\shppict` is preferred over
+`\nonshppict`; shape pictures are `floating`).
+
+- Text is decoded like LibreOffice does it: `\ansicpg`, `\mac`/`\pc`/`\pca`, per-font `\fcharset`
+  (Cyrillic, Greek, CJK double-byte, Symbol → U+F0xx), `\uN` with `\ucN` skipping. Hidden text (`\v`) is
+  kept, tracked deletions (`\deleted`) are dropped, field results are used (PAGE in headers, TITLE, SYMBOL,
+  EQ ruby/combined characters and form controls are computed as LibreOffice shows them).
+- Positioned paragraphs (`\posx`, `\absw`, ...), floating tables and shape text go to `textboxes`.
+- Embedded OLE objects are not reported; their `\result` picture is used only inside tables and for linked
+  objects (as LibreOffice does). Password-protected RTF does not exist as such (`\password` is ignored).
+- Damaged RTF (unbalanced braces, truncated file, huge `\binN`, very deep nesting) is read as far as possible
+  (a warning is added); only `MsDocError` subclasses are raised. Quality against LibreOffice on the RTF corpus:
+  see [docs/en/quality.md](docs/en/quality.md).
+
 ## Errors
 
 | Exception | When |
 |---|---|
-| `NotOleFileError` | the input is not an OLE2 container (not a `.doc`/`.xls`/`.ppt`) |
+| `NotOleFileError` | the input is neither an OLE2 container (`.doc`/`.xls`/`.ppt`) nor RTF (`{\rtf`) |
 | `UnsupportedFormatError` | Word 6/95/2.0 (older than Word 97), Excel 2–7, PowerPoint 4/95, or an OLE file that is none of the three |
 | `EncryptedDocumentError` | the document is password-protected |
 | `CorruptDocumentError` | the container or Word structures are damaged beyond recovery |
@@ -212,10 +233,12 @@ python3 examples/to_markdown.py report.doc                 # -> report.md and re
 python3 examples/extract_folder.py input output            # text.txt + stories.json + images/
 python3 examples/office_formats.py book.xls                # sheets / cells
 python3 examples/office_formats.py deck.ppt --markdown     # slides as Markdown
+python3 examples/office_formats.py letter.rtf              # stories / blocks of an RTF
+python3 examples/rtf_demo.py                               # RTF built in code -> extraction -> Markdown
 ```
 
-Directories may mix `.doc`, `.xls` and `.ppt`; `to_markdown.py` writes `name.xls.md` / `name.ppt.md` for the
-latter two, so equal stems never clash.
+Directories may mix `.doc`, `.xls`, `.ppt` and `.rtf`; `to_markdown.py` writes `name.xls.md` / `name.ppt.md` /
+`name.rtf.md` for the latter, so equal stems never clash.
 
 Every file is processed in its own process with a hard timeout, so one “bad” file cannot stop the batch.
 `to_markdown.py` rewrites the placeholders into relative links to the saved files (`--keep-placeholders`
@@ -225,7 +248,7 @@ leaves them as they are).
 
 In short (details in [docs/en/limitations.md](docs/en/limitations.md)):
 
-- Only Word 97–2003 `.doc` (`nFib ≥ 0xC1`), Excel 97–2003 `.xls` and PowerPoint 97–2003 `.ppt`. Not `.docx`/`.xlsx`/`.pptx`, `.rtf` or the pre-97 formats.
+- Only Word 97–2003 `.doc` (`nFib ≥ 0xC1`), Excel 97–2003 `.xls`, PowerPoint 97–2003 `.ppt` and `.rtf`. Not `.docx`/`.xlsx`/`.pptx` or the pre-97 formats.
 - Encrypted documents are not decrypted (`EncryptedDocumentError`).
 - Of the formatting only structural elements are kept (headings, lists, tables, links, footnotes);
   fonts, colours, alignment, bold/italic are not.

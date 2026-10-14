@@ -2,14 +2,16 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Structured access to .xls and .ppt.  /  Структурный доступ к .xls и .ppt.
+"""Structured access to .xls, .ppt and .rtf.  /  Структурный доступ к .xls, .ppt и .rtf.
 
     python3 examples/office_formats.py book.xls
     python3 examples/office_formats.py deck.ppt
+    python3 examples/office_formats.py letter.rtf
     python3 examples/office_formats.py book.xls --markdown      # the Markdown a model would receive
 
 .xls  -> doc.sheets: name, hidden, cells {(row, col): text} (formatted as Excel shows it), merges.
 .ppt  -> doc.slides: texts, notes, comments, links, images (indexes into doc.images).
+.rtf  -> like .doc: doc.stories (main, footnotes, ...), doc.blocks (paragraphs, tables), doc.images.
 """
 import argparse
 import sys
@@ -28,6 +30,14 @@ def show(path: Path) -> None:
         for r in rows[:20]:
             cols = sorted(c for rr, c in sh.cells if rr == r)
             print("  " + "\t".join(sh.cells[(r, c)] for c in cols))
+    if doc.format == "rtf":
+        kinds = {}
+        for b in doc.blocks:
+            kinds[type(b).__name__] = kinds.get(type(b).__name__, 0) + 1
+        print("blocks:", kinds)
+        for name, paras in doc.stories.items():
+            if paras:
+                print(f"  story {name}: {len(paras)} paragraphs, first: {paras[0][:60]!r}")
     for s in doc.slides:
         print(f"\n[slide {s.index}] images={s.images}")
         for label, items in (("text", s.texts), ("notes", s.notes), ("comments", s.comments), ("links", s.links)):

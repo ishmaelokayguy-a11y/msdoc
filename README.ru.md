@@ -2,7 +2,7 @@
 
 [English](README.md) · **Русский**
 
-Извлечение **текста, структуры и изображений** из бинарных файлов Word 97–2003 (`.doc`) — и тем же API из книг Excel 97–2003 (`.xls`) и презентаций PowerPoint 97–2003 (`.ppt`) — на чистом Python.
+Извлечение **текста, структуры и изображений** из бинарных файлов Word 97–2003 (`.doc`) — и тем же API из книг Excel 97–2003 (`.xls`), презентаций PowerPoint 97–2003 (`.ppt`) и документов RTF (`.rtf`) — на чистом Python.
 Результат — готовый **Markdown** (заголовки, списки, таблицы в HTML, ссылки, сноски) и картинки
 отдельным списком байтов с указанием MIME. Подходит, чтобы подавать документы в LLM.
 
@@ -39,7 +39,7 @@ for i, im in enumerate(media):                   # media[i] <-> ![Media i](image
 Из готового колеса (зависимостей нет, интернет не нужен):
 
 ```bash
-python3 -m pip install msdoc-0.3.0-py3-none-any.whl
+python3 -m pip install msdoc-0.4.0-py3-none-any.whl
 ```
 
 Из исходников (каталог `src/` достаточно добавить в `PYTHONPATH`, установка не обязательна):
@@ -188,11 +188,29 @@ for slide in doc.slides:                        # Slide: index, texts, notes, co
 - Качество измерено относительно LibreOffice так же, как для `.doc` (`oracle/office_*.py`, см.
   [docs/ru/quality.md](docs/ru/quality.md)): около 0,97 (`.xls`) и 0,92–0,95 (`.ppt`) по сводной оценке текст/картинки.
 
+## Rich Text Format (.rtf)
+
+Вход, начинающийся с `{\rtf` (допускаются BOM UTF-8 и пробелы перед ним), читается как RTF ещё до проверки
+OLE; `doc.format` — `"rtf"`, а результат устроен так же, как для `.doc`: `stories` (main, footnotes, endnotes,
+headers, comments, textboxes), `blocks` (заголовки по `\outlinelevel`, списки по `\listtable`/`\ls`/`\ilvl` и
+старым `\pn`, таблицы с объединёнными и вложенными ячейками, гиперссылки, сноски) и `images` (`\pict`
+PNG/JPEG/EMF/WMF/DIB в hex или `\bin`; `\shppict` предпочитается `\nonshppict`; картинки фигур — `floating`).
+
+- Текст декодируется как в LibreOffice: `\ansicpg`, `\mac`/`\pc`/`\pca`, `\fcharset` шрифта (кириллица,
+  греческий, двухбайтовые CJK, Symbol → U+F0xx), `\uN` с пропуском `\ucN`. Скрытый текст (`\v`) остаётся,
+  удалённый в рецензировании (`\deleted`) выбрасывается; у полей берётся результат (PAGE в колонтитулах,
+  TITLE, SYMBOL, EQ и элементы форм вычисляются так, как их показывает LibreOffice).
+- Абзацы-рамки (`\posx`, `\absw`, ...), плавающие таблицы и текст фигур попадают в `textboxes`.
+- Внедрённые OLE-объекты не возвращаются; картинка из `\result` берётся только в таблицах и для связанных
+  объектов (как в LibreOffice). Защиты паролем у RTF нет (`\password` игнорируется).
+- Повреждённый RTF (несбалансированные скобки, обрезанный файл, огромный `\binN`, очень глубокая вложенность)
+  читается насколько возможно (с предупреждением); наружу выходят только наследники `MsDocError`.
+
 ## Ошибки
 
 | Исключение | Когда |
 |---|---|
-| `NotOleFileError` | вход — не контейнер OLE2 (не `.doc`) |
+| `NotOleFileError` | вход — не контейнер OLE2 (`.doc`/`.xls`/`.ppt`) и не RTF (`{\rtf`) |
 | `UnsupportedFormatError` | Word 6/95/2.0 (до Word 97), Excel 2–7, PowerPoint 4/95 или OLE-файл, не являющийся ни одним из трёх |
 | `EncryptedDocumentError` | документ зашифрован паролем |
 | `CorruptDocumentError` | контейнер или структуры Word повреждены и восстановить их нельзя |
@@ -208,10 +226,12 @@ python3 examples/to_markdown.py report.doc                 # -> report.md и rep
 python3 examples/extract_folder.py входной выходной        # text.txt + stories.json + images/
 python3 examples/office_formats.py book.xls                # листы / ячейки
 python3 examples/office_formats.py deck.ppt --markdown     # слайды в Markdown
+python3 examples/office_formats.py letter.rtf              # истории / блоки RTF
+python3 examples/rtf_demo.py                               # RTF собирается в коде -> извлечение -> Markdown
 ```
 
-В каталоге могут лежать вперемешку `.doc`, `.xls` и `.ppt`; для двух последних `to_markdown.py` пишет
-`name.xls.md` / `name.ppt.md`, одинаковые имена не конфликтуют.
+В каталоге могут лежать вперемешку `.doc`, `.xls`, `.ppt` и `.rtf`; для остальных `to_markdown.py` пишет
+`name.xls.md` / `name.ppt.md` / `name.rtf.md`, одинаковые имена не конфликтуют.
 
 Каждый файл обрабатывается в отдельном процессе с жёстким таймаутом, поэтому «плохой» файл не
 останавливает пакет. В `to_markdown.py` заглушки заменяются относительными ссылками на сохранённые
@@ -221,7 +241,7 @@ python3 examples/office_formats.py deck.ppt --markdown     # слайды в Mar
 
 Коротко (подробнее — [docs/ru/limitations.md](docs/ru/limitations.md)):
 
-- Только `.doc` Word 97–2003 (`nFib ≥ 0xC1`), `.xls` Excel 97–2003 и `.ppt` PowerPoint 97–2003. `.docx`/`.xlsx`/`.pptx`, `.rtf` и форматы до 97-го — нет.
+- Только `.doc` Word 97–2003 (`nFib ≥ 0xC1`), `.xls` Excel 97–2003, `.ppt` PowerPoint 97–2003 и `.rtf`. `.docx`/`.xlsx`/`.pptx` и форматы до 97-го — нет.
 - Зашифрованные документы не расшифровываются (`EncryptedDocumentError`).
 - Из форматирования передаются только структурные элементы (заголовки, списки, таблицы, ссылки, сноски);
   шрифты, цвета, выравнивание, жирный/курсив не передаются.

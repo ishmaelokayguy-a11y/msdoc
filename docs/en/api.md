@@ -154,7 +154,7 @@ MsDocError
 
 Typical causes:
 
-- `NotOleFileError` — a `.docx` (it is a ZIP), `.rtf`, a text file, a truncated `.doc` without the signature
+- `NotOleFileError` — a `.docx` (it is a ZIP), a text file, a truncated `.doc` without the signature
   `D0CF11E0A1B11AE1`.
 - `UnsupportedFormatError` — very old Word files (pre-97), and `.xls`/`.ppt` that have no `WordDocument` stream.
 - `EncryptedDocumentError` — the encryption flag is set in the header; decryption is not supported.

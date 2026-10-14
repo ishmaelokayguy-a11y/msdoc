@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""msdoc — pure-Python text and image extractor for Word 97–2003 (.doc), Excel (.xls) and PowerPoint (.ppt)."""
+"""msdoc — pure-Python text and image extractor for Word 97–2003 (.doc), Excel (.xls), PowerPoint (.ppt) and RTF (.rtf)."""
 from .api import MarkdownResult, extract, to_markdown
 from .errors import (
     CorruptDocumentError,
@@ -32,4 +32,4 @@ __all__ = [
     "UnsupportedFormatError",
     "EncryptedDocumentError",
 ]
-__version__ = "0.3.0"
+__version__ = "0.4.0"

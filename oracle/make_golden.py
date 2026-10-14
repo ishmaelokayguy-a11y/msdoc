@@ -14,6 +14,14 @@ keeps for most formats). Output per file:
     python3 oracle/make_golden.py [--jobs 4] [--force] [--ids ID ...]
     python3 oracle/make_golden.py --file some.doc --print   # inspect one file
 
+RTF (--ext rtf): the corpus built by `oracle/office_fetch.py --ext rtf` is converted the
+same way (RTF -> ODT) into the same representation, under data_dir()/rtf/golden/, for the
+kinds normal and fuzz. RTF goldens also carry "links": [{"url", "text"}] (every text:a in
+the body, notes, frames and headers/footers, in document order). --budget makes a run stop
+starting new files after N seconds; files already written are skipped on the next run:
+
+    python3 oracle/make_golden.py --ext rtf --jobs 3 --timeout 60 --budget 100   # repeat until "0 files"
+
 Requires LibreOffice >= 7.x (soffice on PATH, $SOFFICE, or the default macOS
 app location) and Pillow.
 """
@@ -326,7 +334,24 @@ def convert(doc: Path, outdir: Path, profile: Path, timeout: int) -> Path | None
     return out if out.exists() and out.stat().st_size > 0 else None
 
 
-def golden_for(doc: Path, profile: Path, timeout: int) -> tuple[dict, list[bytes]]:
+def collect_links(z: zipfile.ZipFile) -> list[dict]:
+    """Hyperlinks (text:a with an xlink:href) of the body, then of the headers/footers."""
+    out = []
+    content = ET.fromstring(z.read("content.xml"))
+    roots = [content.find(O("body"))]
+    if "styles.xml" in z.namelist():
+        roots.append(ET.fromstring(z.read("styles.xml")).find(O("master-styles")))
+    for r in roots:
+        if r is None:
+            continue
+        for a in r.iter(T("a")):
+            href = a.get(q("xlink", "href"))
+            if href:
+                out.append({"url": href, "text": "".join(a.itertext())})
+    return out
+
+
+def golden_for(doc: Path, profile: Path, timeout: int, links: bool = False) -> tuple[dict, list[bytes]]:
     with tempfile.TemporaryDirectory() as td:
         odt = convert(doc, Path(td), profile, timeout)
         if odt is None:
@@ -335,9 +360,13 @@ def golden_for(doc: Path, profile: Path, timeout: int) -> tuple[dict, list[bytes
             with zipfile.ZipFile(odt) as z:
                 w = Walker(z)
                 w.run()
+                found = collect_links(z) if links else None
         except Exception as e:  # malformed ODT from LO: treat as failure
             return {"status": "lo_failed", "error": repr(e), "stories": {}, "images": []}, []
-    return {"status": "ok", "stories": w.stories, "images": w.images, "struct": w.struct}, w.blobs
+    g = {"status": "ok", "stories": w.stories, "images": w.images, "struct": w.struct}
+    if links:
+        g["links"] = found
+    return g, w.blobs
 
 
 EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp": "bmp", "image/tiff": "tif",
@@ -353,7 +382,10 @@ def main() -> None:
     ap.add_argument("--missing-struct", action="store_true", help="only files whose golden has no 'struct' yet (resume)")
     ap.add_argument("--file", type=Path, help="process a single arbitrary .doc and print the result")
     ap.add_argument("--print", action="store_true")
+    ap.add_argument("--ext", choices=["doc", "rtf"], default="doc", help="corpus: doc (default) or rtf (data_dir()/rtf)")
+    ap.add_argument("--budget", type=float, help="stop starting new conversions after this many seconds")
     args = ap.parse_args()
+    rtf = args.ext == "rtf"
     if SOFFICE is None:
         sys.exit("LibreOffice not found: put soffice on PATH or set SOFFICE=/path/to/soffice")
 
@@ -361,48 +393,59 @@ def main() -> None:
     profiles = Path(tempfile.mkdtemp(prefix="msdoc-lo-profiles-"))
 
     if args.file:
-        g, _ = golden_for(args.file.resolve(), profiles / "p0", args.timeout)
+        g, _ = golden_for(args.file.resolve(), profiles / "p0", args.timeout, links=rtf)
         import json
         print(json.dumps(g, ensure_ascii=False, indent=1))
         return
 
-    manifest = load_json(d / "corpus" / "manifest.json", {})
+    if rtf:
+        root, gold = d / "rtf", d / "rtf" / "golden"
+        manifest = load_json(root / "manifest.json", {})
+    else:
+        root, gold = d, d / "golden"
+        manifest = load_json(d / "corpus" / "manifest.json", {})
     todo = []
     for fid, m in manifest.items():
         if args.ids and fid not in args.ids:
             continue
-        gp = d / "golden" / f"{fid}.json"
+        if rtf and m["kind"] not in ("normal", "fuzz"):
+            continue  # fail / notrtf are scored for robustness only
+        gp = gold / f"{fid}.json"
         if args.missing_struct:
             old = load_json(gp, None)
             if old is not None and ("struct" in old or old.get("status") != "ok"):
                 continue
         elif not args.force and gp.exists():
             continue
-        todo.append((fid, d / "corpus" / m["split"] / f"{fid}.doc"))
+        todo.append((fid, root / "corpus" / m["split"] / f"{fid}.{'rtf' if rtf else 'doc'}"))
     print(f"{len(todo)} files to convert with {args.jobs} LibreOffice workers")
 
     import threading
     slots = list(range(args.jobs))
     lock = threading.Lock()
     done = [0]
+    import time
+    t0 = time.monotonic()
 
     def work(item):
         fid, path = item
+        if args.budget is not None and time.monotonic() - t0 > args.budget:
+            return
         with lock:
             slot = slots.pop()
         try:
-            g, blobs = golden_for(path, profiles / f"p{slot}", args.timeout)
+            g, blobs = golden_for(path, profiles / f"p{slot}", args.timeout, links=rtf)
         finally:
             with lock:
                 slots.append(slot)
-        gdir = d / "golden" / fid
+        gdir = gold / fid
         shutil.rmtree(gdir, ignore_errors=True)
         for i, (meta, blob) in enumerate(zip(g["images"], blobs)):
             gdir.mkdir(parents=True, exist_ok=True)
             fn = f"{i:02d}.{EXT.get(meta['mime'], 'bin')}"
             (gdir / fn).write_bytes(blob)
             meta["file"] = f"{fid}/{fn}"
-        save_json(d / "golden" / f"{fid}.json", g)
+        save_json(gold / f"{fid}.json", g)
         with lock:
             done[0] += 1
             if done[0] % 20 == 0 or done[0] == len(todo):
@@ -411,6 +454,8 @@ def main() -> None:
     with ThreadPoolExecutor(args.jobs) as ex:
         list(ex.map(work, todo))
     shutil.rmtree(profiles, ignore_errors=True)
+    if args.budget is not None:
+        print(f"written {done[0]}, left {len(todo) - done[0]} (re-run to continue)")
 
 
 if __name__ == "__main__":

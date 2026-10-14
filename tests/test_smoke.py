@@ -18,10 +18,15 @@ def test_story_keys_match_oracle():
     assert tuple(STORY_KEYS) == tuple(common.STORY_KEYS)
 
 
-@pytest.mark.parametrize("data", [b"", b"hello world", b"{\\rtf1 not a doc}"])
+@pytest.mark.parametrize("data", [b"", b"hello world", b"{\\rt1 not a doc}"])
 def test_non_ole_input_raises_library_error(data):
     with pytest.raises(msdoc.NotOleFileError):
         msdoc.extract(data)
+
+
+def test_rtf_signature_is_read_as_rtf():
+    doc = msdoc.extract(b"{\\rtf1 not a doc}")
+    assert doc.format == "rtf" and doc.stories["main"] == ["not a doc"]
 
 
 def test_document_defaults():

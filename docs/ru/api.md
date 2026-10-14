@@ -155,7 +155,7 @@ MsDocError
 
 Типичные причины:
 
-- `NotOleFileError` — `.docx` (это ZIP), `.rtf`, текстовый файл, обрезанный `.doc` без сигнатуры
+- `NotOleFileError` — `.docx` (это ZIP), текстовый файл, обрезанный `.doc` без сигнатуры
   `D0CF11E0A1B11AE1`.
 - `UnsupportedFormatError` — очень старые файлы Word (до 97), а также `.xls`/`.ppt`, у которых нет потока `WordDocument`.
 - `EncryptedDocumentError` — стоит флаг шифрования в заголовке; расшифровка не поддерживается.

@@ -20,6 +20,21 @@ Per-file score = 0.7 * text + 0.3 * images (normal files).
 Special kinds: fail -> 1 if no crash/hang; legacy -> 1 for UnsupportedFormatError;
 encrypted -> 1 for EncryptedDocumentError; notole -> 1 for NotOleFileError.
 Crash (non-MsDocError exception), timeout, NotImplementedError -> 0.
+
+RTF (--ext rtf; corpus from `office_fetch.py --ext rtf`, golden from `make_golden.py --ext rtf`)
+uses the same scoring on data_dir()/rtf: corpus/<split>/<id>.rtf, golden/<id>.json,
+baseline.json, struct_baseline.json; reports go to reports/rtf.{md,json}.
+
+    python3 oracle/compare.py --ext rtf                  # dev split
+    python3 oracle/compare.py --ext rtf --kind normal    # only normal files
+    python3 oracle/compare.py --ext rtf --diff ID        # story / structure / image diff
+    python3 oracle/compare.py --ext rtf --check          # ratchet vs data/rtf/baseline.json
+    python3 oracle/compare.py --ext rtf --update-baseline   # integrator only
+
+Extra RTF kinds: notrtf (named .rtf, not RTF) -> 1 unless crash/hang; fuzz (LibreOffice
+crash-test / CVE samples) -> 1 for a clean MsDocError, else scored against the golden.
+Hyperlinks: "links" = F1 of the link URLs (multiset) vs LibreOffice's text:a, reported
+only (the link count is already part of the structure score).
 """
 from __future__ import annotations
 
@@ -137,6 +152,11 @@ def score_file(m: dict, g: dict | None, r: dict) -> dict:
     if kind == "fail":
         out["score"] = 1.0
         return out
+    if kind == "notrtf" or (kind == "fuzz" and st == "error"):
+        out["score"] = 1.0
+        if st == "error":
+            out["note"] = f"{r.get('error_type')}: {r.get('error', '')[:120]}"
+        return out
     if kind in EXPECTED_ERROR and st == "error":
         out["score"] = 1.0 if r.get("error_type") == EXPECTED_ERROR[kind] else 0.5
         out["note"] = f"{r.get('error_type')}: {r.get('error', '')[:120]}"
@@ -159,7 +179,35 @@ def score_file(m: dict, g: dict | None, r: dict) -> dict:
     # Structure (headings/lists/tables/picture anchors) is tracked separately: own baseline, not part of `score`.
     if g.get("struct") is not None and r.get("struct") is not None:
         out["struct"] = round(struct_score(g["struct"], r["struct"]), 4)
+    if g.get("links") is not None and r.get("links") is not None:  # RTF goldens only
+        out["links"] = round(link_f1(g["links"], r["links"]), 4)
     return out
+
+
+def link_f1(g: list, r: list) -> float:
+    from collections import Counter
+    gc, rc = Counter(x["url"] for x in g), Counter(x["url"] for x in r)
+    if not gc and not rc:
+        return 1.0
+    hit = sum((gc & rc).values())
+    return 2 * hit / (sum(gc.values()) + sum(rc.values()))
+
+
+class Layout:
+    """Where a corpus lives: doc (data_dir()/corpus, golden, baseline.json) or rtf (data_dir()/rtf/...)."""
+
+    def __init__(self, ext: str, d: Path):
+        self.ext = ext
+        if ext == "doc":
+            self.manifest, self.corpus, self.golden = d / "corpus" / "manifest.json", d / "corpus", d / "golden"
+            self.baseline, self.struct_baseline = d / "baseline.json", d / "struct_baseline.json"
+        else:
+            r = d / ext
+            self.manifest, self.corpus, self.golden = r / "manifest.json", r / "corpus", r / "golden"
+            self.baseline, self.struct_baseline = r / "baseline.json", r / "struct_baseline.json"
+
+    def path(self, fid: str, m: dict) -> Path:
+        return self.corpus / m["split"] / f"{fid}.{self.ext}"
 
 
 # ------------------------------------------------------------------ running
@@ -193,11 +241,11 @@ def select(manifest: dict, args) -> list[str]:
     return ids
 
 
-def show_diff(fid: str, d: Path, m: dict, impl: str, timeout: float) -> None:
-    path = d / "corpus" / m["split"] / f"{fid}.doc"
+def show_diff(fid: str, lay: "Layout", m: dict, impl: str, timeout: float) -> None:
+    path = lay.path(fid, m)
     dump = REPO / "reports" / "dump" / fid
     r = run_extractor(path, impl, timeout, dump)
-    g = load_json(d / "golden" / f"{fid}.json")
+    g = load_json(lay.golden / f"{fid}.json")
     print(f"# {fid}  kind={m['kind']} source={m['source']}:{m['path']}")
     print(f"# file: {path}")
     print(json.dumps(score_file(m, g, r), ensure_ascii=False, indent=1))
@@ -220,14 +268,19 @@ def show_diff(fid: str, d: Path, m: dict, impl: str, timeout: float) -> None:
             print(f"\n## structure tokens: golden {len(gt)}, ours {len(rt)}  (H=heading, L=list, T=table RxC, I=picture)")
             for line in difflib.unified_diff(gt, rt, "libreoffice", "msdoc", n=2, lineterm=""):
                 print(line[:200])
-    print("\n## images  (golden: data/golden/%s/, ours: reports/dump/%s/)" % (fid, fid))
+    if g.get("links") is not None and r.get("links") is not None and sorted(x["url"] for x in g["links"]) != sorted(x["url"] for x in r["links"]):
+        print("\n## links  (golden url | text)")
+        for tag, lst in (("golden", g["links"]), ("ours", r["links"])):
+            for ln in lst:
+                print(f"  {tag:6} {ln['url'][:100]} | {ln['text'][:60]}")
+    print("\n## images  (golden: %s/%s/, ours: reports/dump/%s/)" % (lay.golden, fid, fid))
     for tag, lst in (("golden", g["images"]), ("ours", r["images"])):
         for im in lst:
             print(f"  {tag:6} {im['kind']:8} {im['story']:9} {im['mime']:16} {im['bytes']:>8}B "
                   f"{(str(im['w']) + 'x' + str(im['h'])) if im.get('w') else '':>10} {im['sha256'][:12]} {im.get('file', '')}")
 
 
-def write_report(results: dict, manifest: dict, label: str, elapsed: float) -> Path:
+def write_report(results: dict, manifest: dict, label: str, elapsed: float, ext: str = "doc") -> Path:
     rep = REPO / "reports"
     rep.mkdir(exist_ok=True)
     save_json(rep / f"{label}.json", results)
@@ -258,6 +311,9 @@ def write_report(results: dict, manifest: dict, label: str, elapsed: float) -> P
     st = [v["struct"] for v in scored.values() if "struct" in v]
     if st:
         lines.append(f"structure score mean {sum(st) / len(st):.4f} (n={len(st)}; headings/lists/tables/picture anchors vs LibreOffice)")
+    lk = [v["links"] for v in scored.values() if "links" in v]
+    if lk:
+        lines.append(f"hyperlink URL F1 mean {sum(lk) / len(lk):.4f} (n={len(lk)})")
     lines += ["", "## worst files", "", "| id | kind | score | text | img | note |", "|---|---|---|---|---|---|"]
     worst = sorted(scored.items(), key=lambda kv: kv[1]["score"])[:40]
     for fid, v in worst:
@@ -265,7 +321,7 @@ def write_report(results: dict, manifest: dict, label: str, elapsed: float) -> P
         img = v.get("images", {})
         imgs = f"{img.get('ours', '')}/{img.get('golden', '')} f1={v.get('img_f1', '')}" if img else ""
         lines.append(f"| {fid} | {v['kind']} | {v['score']:.3f} | {v.get('text', '')} | {imgs} | {note[:120]} |")
-    lines += ["", "Inspect one file: `python3 oracle/compare.py --diff <id>`"]
+    lines += ["", "Inspect one file: `python3 oracle/compare.py%s --diff <id>`" % ("" if ext == "doc" else " --ext " + ext)]
     out = rep / f"{label}.md"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out
@@ -284,14 +340,19 @@ def main() -> None:
     ap.add_argument("--diff", metavar="ID")
     ap.add_argument("--label", default="latest")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--ext", choices=["doc", "rtf"], default="doc", help="corpus to score (default doc)")
     args = ap.parse_args()
 
     d = data_dir()
-    manifest = load_json(d / "corpus" / "manifest.json")
+    lay = Layout(args.ext, d)
+    if args.ext != "doc" and args.label == "latest":
+        args.label = args.ext
+    manifest = load_json(lay.manifest)
     if not manifest:
-        sys.exit(f"no corpus at {d}/corpus — run oracle/fetch_corpus.py and oracle/make_golden.py")
+        sys.exit(f"no corpus at {lay.manifest.parent} — run oracle/fetch_corpus.py (rtf: oracle/office_fetch.py --ext rtf) "
+                 "and oracle/make_golden.py [--ext rtf]")
     if args.diff:
-        show_diff(args.diff, d, manifest[args.diff], args.impl, args.timeout)
+        show_diff(args.diff, lay, manifest[args.diff], args.impl, args.timeout)
         return
     if args.split == "holdout" and (args.check or args.update_baseline):
         sys.exit("--check/--update-baseline work on the dev split only")
@@ -301,14 +362,14 @@ def main() -> None:
 
     def one(fid):
         m = manifest[fid]
-        r = run_extractor(d / "corpus" / m["split"] / f"{fid}.doc", args.impl, args.timeout)
-        g = load_json(d / "golden" / f"{fid}.json")
+        r = run_extractor(lay.path(fid, m), args.impl, args.timeout)
+        g = load_json(lay.golden / f"{fid}.json")
         return fid, score_file(m, g, r)
 
     with ThreadPoolExecutor(args.jobs) as ex:
         results = dict(ex.map(one, ids))
     elapsed = time.perf_counter() - t0
-    report = write_report(results, manifest, args.label if args.split == "dev" else f"{args.label}-{args.split}", elapsed)
+    report = write_report(results, manifest, args.label if args.split == "dev" else f"{args.label}-{args.split}", elapsed, args.ext)
 
     scored = [v["score"] for v in results.values() if v.get("score") is not None]
     mean = sum(scored) / max(1, len(scored))
@@ -317,13 +378,13 @@ def main() -> None:
     else:
         print(f"mean score {mean:.4f} over {len(scored)} files ({elapsed:.0f}s); report: {report}")
 
-    baseline_path = d / "baseline.json"
+    baseline_path = lay.baseline
     baseline = load_json(baseline_path, {})
     rc = 0
     # Integrator-only escape hatch: MSDOC_WAIVE_FUZZ=1 lets scores of fuzzer-origin files (where LibreOffice's
     # own output is best-effort garbage) go DOWN when a rule that was fitted to them is removed.
     waive = os.environ.get("MSDOC_WAIVE_FUZZ") == "1"
-    is_fuzz = lambda fid: bool(FUZZ_RE.search(manifest.get(fid, {}).get("path", "")))  # noqa: E731
+    is_fuzz = lambda fid: manifest.get(fid, {}).get("kind") == "fuzz" or bool(FUZZ_RE.search(manifest.get(fid, {}).get("path", "")))  # noqa: E731
     if args.check:
         regressions = [(fid, baseline[fid], v["score"]) for fid, v in results.items()
                        if fid in baseline and v.get("score") is not None and v["score"] < baseline[fid] - EPS
@@ -337,7 +398,7 @@ def main() -> None:
             print("Fix the regressions (python3 oracle/compare.py --diff <id>) before finishing.", file=sys.stderr)
         elif not args.quiet:
             print("ratchet OK: no file below baseline")
-    sb_path = d / "struct_baseline.json"
+    sb_path = lay.struct_baseline
     sbase = load_json(sb_path, {})
     if args.check and sbase:
         sreg = [(fid, sbase[fid], v["struct"]) for fid, v in results.items()

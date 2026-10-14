@@ -2,7 +2,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Извлечь текст и картинки из всех .doc, .xls и .ppt в каталоге (с жёстким таймаутом на файл).
+"""Извлечь текст и картинки из всех .doc, .xls, .ppt и .rtf в каталоге (с жёстким таймаутом на файл).
 
     python3 examples/extract_folder.py ВХОДНОЙ_КАТАЛОГ ВЫХОДНОЙ_КАТАЛОГ [--jobs 4] [--timeout 60] [--no-images]
 
@@ -24,7 +24,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-SUFFIXES = {".doc", ".xls", ".ppt"}
+SUFFIXES = {".doc", ".xls", ".ppt", ".rtf"}
 EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp": "bmp", "image/tiff": "tif",
        "image/x-wmf": "wmf", "image/x-emf": "emf", "image/x-pict": "pct"}
 

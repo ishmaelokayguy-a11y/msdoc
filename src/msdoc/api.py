@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from typing import BinaryIO, NamedTuple, Union
 
-from . import blocks as blocks_mod, cfb, fib as fibmod, images, pieces, ppt, props, stories, xls
+from . import blocks as blocks_mod, cfb, fib as fibmod, images, pieces, ppt, props, rtf, stories, xls
 from .errors import CorruptDocumentError, MsDocError, UnsupportedFormatError
 from .model import Document, Image
 
@@ -83,11 +83,19 @@ def _extract_other(container, images_enabled: bool):
 
 
 def extract(source: Source, *, images_enabled: bool = True) -> Document:
-    """Extract text stories and images from a Word 97-2003 .doc file.
+    """Extract text stories and images from a Word 97-2003 .doc file (also .xls, .ppt, .rtf).
 
     Raises only MsDocError subclasses.
     """
     data = _read(source)
+    if rtf.rtf_offset(data) is not None:
+        # Rich Text Format, recognised by its '{\\rtf' signature before the OLE check.
+        try:
+            return rtf.parse(data, images_enabled)
+        except MsDocError:
+            raise
+        except Exception as e:  # pragma: no cover - last-resort guard, see below
+            raise CorruptDocumentError(f"internal error: {type(e).__name__}: {e}") from e
     if data[:8] != cfb.CFB_SIGNATURE and (bytes(data[:2]) in _LEGACY_WIDENTS or bytes(data[:4]) in _LEGACY_BIFF):
         raise UnsupportedFormatError("legacy non-OLE binary (Word 1/2 or Excel 2-4)")
     try:

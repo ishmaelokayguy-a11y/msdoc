@@ -27,6 +27,28 @@ from common import fingerprint  # noqa: E402
 sys.setrecursionlimit(5000)
 
 
+def _links(doc) -> list:
+    """URLs of Paragraph.links in blocks, notes and extra (text boxes, comments, headers)."""
+    out: list = []
+
+    def walk(blocks):
+        for b in blocks:
+            if hasattr(b, "rows"):
+                for row in b.rows:
+                    for c in row.cells:
+                        walk(c.blocks)
+            else:
+                out.extend({"url": ln.url, "text": b.text[ln.start:ln.end]} for ln in getattr(b, "links", []))
+
+    walk(doc.blocks)
+    for notes in (getattr(doc, "notes", None) or {}).values():
+        for note in notes:
+            walk(note)
+    for blocks in (getattr(doc, "extra", None) or {}).values():
+        walk(blocks)
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("file", type=Path)
@@ -53,6 +75,7 @@ def main() -> None:
         if getattr(doc, "blocks", None) is not None:
             from structscore import blocks_to_neutral
             res["struct"] = blocks_to_neutral(doc.blocks)
+            res["links"] = _links(doc)
         res["warnings"] = list(getattr(doc, "warnings", []))[:50]
     except NotImplementedError as e:
         res = {"status": "not_implemented", "error": str(e)}

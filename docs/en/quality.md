@@ -122,7 +122,7 @@ Score = 0.7 × text similarity + 0.3 × picture F1 (xls text = per sheet the nam
 ppt text = per slide the paragraphs, then the notes). Files that must be rejected (encrypted, pre-97, not OLE) score 1
 when the matching `MsDocError` is raised; a crash, hang or foreign exception scores 0.
 
-| version 0.3.0 | files | mean | no crashes |
+| version 0.4.0 | files | mean | no crashes |
 |---|---|---|---|
 | `.xls` dev | 641 | 0.974 | yes |
 | `.xls` holdout | 115 | 0.981 | yes |
@@ -132,3 +132,20 @@ when the matching `MsDocError` is raised; a crash, hang or foreign exception sco
 Known differences that are LibreOffice behaviour, not defects: formulas that LibreOffice recalculates (it shows its own
 result or `Err:5xx` where Excel stored a value), pivot-cache sheets, fields that show the current date, a default empty
 slide for presentations without slides, and a few files where LibreOffice repairs a damaged structure differently.
+
+## Rich Text Format (.rtf)
+
+Corpus: the `.rtf` files of LibreOffice's `sw/qa`, Apache POI and Apache Tika (`oracle/office_fetch.py --ext rtf`),
+605 dev files (532 normal, 34 fuzz, 23 that LibreOffice rejects, 16 that are not RTF) and a held-out split.
+Reference: LibreOffice's RTF -> ODT conversion, scored with the same `oracle/compare.py --ext rtf`.
+
+| dev split | value |
+|---|---|
+| mean score (all kinds) | 0.986 |
+| normal files: score / text / picture F1 / structure | 0.992 / 0.993 / 0.991 / 0.980 |
+| crashes, timeouts | 0 |
+| holdout, all kinds / normal files | 0.976 / 0.976 (103 / 86 files) |
+
+Known gaps: LibreOffice stores a PNG fallback next to every WMF/EMF picture (we return the vector picture
+only); fields LibreOffice recomputes (DATE, page numbers in the body of multi-page documents) keep their
+cached RTF result; OLE objects outside tables are not reported (LibreOffice embeds them).

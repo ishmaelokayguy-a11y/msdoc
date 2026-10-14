@@ -10,7 +10,8 @@
 | Word 6/95 (`nFib < 0x00C1`), Word 2.0 и старше | `UnsupportedFormatError` |
 | OLE-файл другой программы (`.xls`, `.ppt`, `.msg` и т. п.) | `UnsupportedFormatError` |
 | Документ с паролем | `EncryptedDocumentError` (расшифровка не реализована) |
-| `.docx`, `.rtf`, `.odt`, текст, любой не-OLE файл | `NotOleFileError` |
+| `.rtf` (начинается с `{\rtf`) | читается парсером RTF, см. README |
+| `.docx`, `.odt`, текст, любой другой не-OLE файл | `NotOleFileError` |
 | Повреждённый `.doc` | `CorruptDocumentError`, либо частичный результат с записью в `Document.warnings` |
 
 ## Что именно извлекается
