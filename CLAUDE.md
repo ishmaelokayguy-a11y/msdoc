@@ -91,6 +91,7 @@ regressions, fix them; do not try to bypass the hook.
 | `xls.py`, `numfmt.py` | Excel 97-2003 (BIFF8) workbooks and number formats -> `Document.sheets` + blocks | oracle: `oracle/office_compare.py --ext xls` |
 | `ppt.py` | PowerPoint 97-2003 (persist directory, slides, notes, comments, pictures) -> `Document.slides` + blocks | oracle: `oracle/office_compare.py --ext ppt` |
 | `rtf.py` | Rich Text Format (tokenizer, group state, codepages, tables, lists, fields, pictures) -> `Document` with `format="rtf"`, detected in `api.py` before the OLE check | oracle: `oracle/compare.py --ext rtf` (corpus `data/rtf/`, `oracle/office_fetch.py --ext rtf`) |
+| `odf.py`, `odt.py` | OpenDocument: hardened zip/XML package, manifest/encryption, styles, list numbering, pictures, text walker (`odf.py`, shared with `ods.py`/`odp.py`, see its HOW TO USE note); Writer documents -> `Document` with `format="odt"` (`odt.py`), Calc -> `Document.sheets` with `format="ods"` (`ods.py`), Impress -> `Document.slides` with `format="odp"` (`odp.py`); zips are dispatched in `api.py` before the OLE check | oracle: `oracle/compare.py --ext odt/ods/odp` (corpus `data/odf/`) |
 | `blocks.py`, `markdown.py` | structure (headings, lists, HTML tables, image/note anchors) -> Markdown | prompts/40-blocks.md |
 | all | robustness on broken/fuzzed input | prompts/20-robustness.md |
 

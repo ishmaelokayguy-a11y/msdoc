@@ -28,6 +28,10 @@ rtf kind: normal | fuzz (LibreOffice pass/indeterminate crash-test files, CVE/fu
           samples: LO must not crash, its text is best effort) | fail (LO rejects them:
           */fail/*) | notrtf (named .rtf but does not start with "{\\rtf")
 Files > 8 MB are skipped; duplicates (same sha256) are kept once (first source wins).
+
+OpenDocument (--ext odf; odt/ods/odp are aliases): see oracle/odf_corpus.py.
+
+    python3 oracle/office_fetch.py --ext odf     # data_dir()/odf/corpus/{odt,ods,odp}/{dev,holdout}/
 """
 from __future__ import annotations
 
@@ -236,14 +240,20 @@ $DATA is the shared data dir (here: {data}; see oracle/common.py data_dir()).
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ext", choices=["office", "rtf"], default="office",
-                    help="office (default): .xls/.ppt corpus; rtf: the .rtf corpus under data/rtf")
+    ap.add_argument("--ext", choices=["office", "rtf", "odf", "odt", "ods", "odp"], default="office",
+                    help="office (default): .xls/.ppt corpus; rtf: the .rtf corpus under data/rtf; "
+                         "odf (= odt, ods, odp): the OpenDocument corpus under data/odf (oracle/odf_corpus.py)")
+    ap.add_argument("--only", nargs="*", help="odf: fetch only these sources (see odf_corpus.SOURCES)")
+    ap.add_argument("--no-fetch", action="store_true", help="odf: use the existing clones only")
     ap.add_argument("--lo", type=Path)
     ap.add_argument("--poi", type=Path)
     ap.add_argument("--extra", type=Path)
     a = ap.parse_args()
     if a.ext == "rtf":
         return rtf_main(a)
+    if a.ext in ("odf", "odt", "ods", "odp"):
+        from odf_corpus import main as odf_main
+        return odf_main(a)
     d = data_dir()
     lo = a.lo or d / "sources" / "libreoffice-office"
     poi = a.poi or d / "sources" / "poi-office"

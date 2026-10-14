@@ -150,3 +150,40 @@ python3 oracle/office_compare.py --ext ppt --split holdout   # итоговая 
 картинку); поля, которые LibreOffice пересчитывает (DATE, номера страниц в теле многостраничных документов),
 сохраняют результат из файла; объекты OLE вне таблиц не выдаются (LibreOffice встраивает их).
 
+
+## OpenDocument (.odt, .ods, .odp): корпус и оракул
+
+Корпус: файлы `.odt/.ods/.odp` (и шаблоны `.ott/.ots/.otp`) из LibreOffice core (`sw/qa`, `sc/qa`, `sd/qa`, xmloff,
+chart2, vcl, ...), Apache Tika/POI, ODF Toolkit, odfdo, odfpy, ezodf и pandoc (`oracle/office_fetch.py --ext odf`),
+без дубликатов, 15 % отложено, в `data/odf/` (раскладка, виды файлов и точные определения текста: `data/odf/README.md`).
+
+Эталон нельзя строить по `content.xml` самого файла (его же читает парсер, получилась бы тавтология). LibreOffice
+открывает каждый файл и (а) сохраняет его заново в том же формате; этот записанный LibreOffice ODF разбирается
+существующими обходчиками и определяет оценку; (б) экспортирует его в простой текст / CSV: независимая перекрёстная
+проверка, выводится как `plain`. Оценка = 0.7 × текст + 0.3 × F1 картинок; для `.odt` — определение историй как у
+`.doc`/`.rtf` плюс оценка структуры, для `.ods`/`.odp` — построчные определения `.xls`/`.ppt` (`oracle/odf_score.py`).
+
+```bash
+python3 oracle/office_fetch.py --ext odf                 # корпус (можно перезапускать)
+python3 oracle/make_golden.py --ext odt --budget 100     # эталон; повторять до "0 left" (также ods, odp)
+python3 oracle/compare.py --ext ods --kind normal template
+python3 oracle/compare.py --ext odp --diff <id>
+python3 oracle/compare.py --ext odt --check              # храповик по data/odf/baseline-odt.json
+python3 oracle/compare.py --ext odt --update-baseline    # завести базу, когда парсер появится
+```
+
+Результаты (версия 0.5.0; «обычные» — без фаззер-файлов, зашифрованных и отвергаемых):
+
+| Формат | Выборка | Файлов | Среднее | Обычные файлы |
+|---|---|---|---|---|
+| `.odt` | dev | 1796 | 0,9967 | 0,9970 |
+| `.odt` | holdout | 341 | 0,9959 | — |
+| `.ods` | dev | 800 | 0,9894 | 0,9892 |
+| `.ods` | holdout | 129 | 0,9759 | — |
+| `.odp` | dev | 309 | 0,9950 | 0,9948 |
+| `.odp` | holdout | 61 | 0,9999 | — |
+
+Падений и таймаутов нет. Оценки ODF выше, чем у бинарных форматов, потому что ODF — родной формат LibreOffice.
+Известные расхождения — поведение LibreOffice: формулы, которые он пересчитывает (RAND, TODAY, функции-надстройки),
+поля даты, автора и имени файла, поля номера страницы, картинки, которые LibreOffice создаёт для связанных
+объектов; см. `docs/lo_disagreements.md`.

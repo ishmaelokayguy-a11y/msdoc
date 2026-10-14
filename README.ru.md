@@ -29,6 +29,7 @@ for i, im in enumerate(media):                   # media[i] <-> ![Media i](image
 - [Подача в LLM](#подача-в-llm)
 - [Только текст и все части документа](#только-текст-и-все-части-документа)
 - [Структура документа (blocks)](#структура-документа-blocks)
+- [OpenDocument (.odt, .ods, .odp)](#opendocument-odt-ods-odp)
 - [Ошибки](#ошибки)
 - [Пакетная обработка каталога](#пакетная-обработка-каталога)
 - [Ограничения](#ограничения)
@@ -39,7 +40,7 @@ for i, im in enumerate(media):                   # media[i] <-> ![Media i](image
 Из готового колеса (зависимостей нет, интернет не нужен):
 
 ```bash
-python3 -m pip install msdoc-0.4.0-py3-none-any.whl
+python3 -m pip install msdoc-0.5.0-py3-none-any.whl
 ```
 
 Из исходников (каталог `src/` достаточно добавить в `PYTHONPATH`, установка не обязательна):
@@ -206,14 +207,42 @@ PNG/JPEG/EMF/WMF/DIB в hex или `\bin`; `\shppict` предпочитаетс
 - Повреждённый RTF (несбалансированные скобки, обрезанный файл, огромный `\binN`, очень глубокая вложенность)
   читается насколько возможно (с предупреждением); наружу выходят только наследники `MsDocError`.
 
+## OpenDocument (.odt, .ods, .odp)
+
+Zip-архив, у которого запись `mimetype` (или корневая запись манифеста) — тип OpenDocument (`text`,
+`spreadsheet`, `presentation`, а также шаблоны `.ott/.ots/.otp`), читается как ODF до проверки OLE.
+`doc.format` равен `"odt"`, `"ods"` или `"odp"`, результат устроен так же, как у старых форматов:
+
+- **`.odt`** как `.doc`: `stories`, `blocks` (заголовки из `text:h`, списки с номерами по стилям списков, таблицы
+  с объединёнными и вложенными ячейками, гиперссылки, сноски), `notes`, `extra` и `images`. Удалённый в режиме
+  правки текст отбрасывается, поля дают сохранённый текст (кроме номера страницы и главы: LibreOffice
+  пересчитывает их по вёрстке — 0 / пусто вне первой страницы).
+- **`.ods`** как `.xls`: `doc.sheets` с текстом, который LibreOffice показывает в ячейке (ODF его хранит),
+  объединённые диапазоны, скрытые листы, гиперссылки, картинки; повторяющиеся строки и столбцы разворачиваются с
+  жёсткими лимитами; комментарии к ячейкам — в `stories["comments"]`. Формулы не вычисляются (RAND, TODAY, ...
+  остаются с сохранённым текстом).
+- **`.odp`** как `.ppt`: `doc.slides` с заголовками, текстом структуры, надписями, таблицами, группами,
+  заметками, комментариями, ссылками и картинками; текст мастер-страниц не выдаётся (как при импорте в LibreOffice).
+
+Картинки — это `draw:image` из пакета и `office:binary-data`; внешние ссылки, встроенные объекты, диаграммы и их
+картинки-заменители не выдаются. Пакет считается враждебным: число записей, размеры и степень сжатия ограничены,
+«размножающиеся» сущности DTD отвергаются (внешние не загружаются), слишком глубокий XML уплощается.
+
+```python
+doc = msdoc.extract("table.ods")
+for sheet in doc.sheets:
+    print(sheet.name, sheet.hidden, len(sheet.cells))
+print(msdoc.to_markdown("deck.odp").text)      # '## Slide N', заголовки, пункты, Notes
+```
+
 ## Ошибки
 
 | Исключение | Когда |
 |---|---|
-| `NotOleFileError` | вход — не контейнер OLE2 (`.doc`/`.xls`/`.ppt`) и не RTF (`{\rtf`) |
-| `UnsupportedFormatError` | Word 6/95/2.0 (до Word 97), Excel 2–7, PowerPoint 4/95 или OLE-файл, не являющийся ни одним из трёх |
-| `EncryptedDocumentError` | документ зашифрован паролем |
-| `CorruptDocumentError` | контейнер или структуры Word повреждены и восстановить их нельзя |
+| `NotOleFileError` | вход — не контейнер OLE2 (`.doc`/`.xls`/`.ppt`), не RTF (`{\rtf`) и не пакет OpenDocument (в том числе другие zip, например `.docx`) |
+| `UnsupportedFormatError` | Word 6/95/2.0 (до Word 97), Excel 2–7, PowerPoint 4/95, OLE-файл, не являющийся ни одним из трёх, или пакет OpenDocument другого вида (рисунки `.odg`, формулы, ...) |
+| `EncryptedDocumentError` | документ зашифрован паролем (в том числе зашифрованный пакет ODF) |
+| `CorruptDocumentError` | контейнер или структуры Word повреждены и восстановить их нельзя (для ODF: повреждённый zip, некорректный или слишком большой XML, запись-«бомба») |
 
 Все они наследуются от `MsDocError`, поэтому в общем случае достаточно `except msdoc.MsDocError`.
 Других исключений наружу не выходит. Некритичные проблемы попадают в `doc.warnings`.
@@ -228,6 +257,7 @@ python3 examples/office_formats.py book.xls                # листы / яче
 python3 examples/office_formats.py deck.ppt --markdown     # слайды в Markdown
 python3 examples/office_formats.py letter.rtf              # истории / блоки RTF
 python3 examples/rtf_demo.py                               # RTF собирается в коде -> извлечение -> Markdown
+python3 examples/odf_demo.py                               # .odt/.ods/.odp собираются в коде -> Markdown
 ```
 
 В каталоге могут лежать вперемешку `.doc`, `.xls`, `.ppt` и `.rtf`; для остальных `to_markdown.py` пишет
@@ -241,7 +271,7 @@ python3 examples/rtf_demo.py                               # RTF собирае�
 
 Коротко (подробнее — [docs/ru/limitations.md](docs/ru/limitations.md)):
 
-- Только `.doc` Word 97–2003 (`nFib ≥ 0xC1`), `.xls` Excel 97–2003, `.ppt` PowerPoint 97–2003 и `.rtf`. `.docx`/`.xlsx`/`.pptx` и форматы до 97-го — нет.
+- Только `.doc` Word 97–2003 (`nFib ≥ 0xC1`), `.xls` Excel 97–2003, `.ppt` PowerPoint 97–2003, `.rtf`, `.odt`, `.ods` и `.odp`. `.docx`/`.xlsx`/`.pptx` и форматы до 97-го — нет.
 - Зашифрованные документы не расшифровываются (`EncryptedDocumentError`).
 - Из форматирования передаются только структурные элементы (заголовки, списки, таблицы, ссылки, сноски);
   шрифты, цвета, выравнивание, жирный/курсив не передаются.

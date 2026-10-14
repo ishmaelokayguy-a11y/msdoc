@@ -11,7 +11,8 @@
 | An OLE file from another program (`.xls`, `.ppt`, `.msg`, …) | `UnsupportedFormatError` |
 | A password-protected document | `EncryptedDocumentError` (decryption is not implemented) |
 | `.rtf` (starts with `{\rtf`) | read by the RTF parser, see README |
-| `.docx`, `.odt`, text, any other non-OLE file | `NotOleFileError` |
+| `.odt`, `.ods`, `.odp` (zip with an OpenDocument `mimetype`) | read by the ODF parsers, see README |
+| `.docx`, text, any other non-OLE file | `NotOleFileError` |
 | A damaged `.doc` | `CorruptDocumentError`, or a partial result with an entry in `Document.warnings` |
 
 ## What is extracted

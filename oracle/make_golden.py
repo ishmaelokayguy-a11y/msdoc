@@ -22,6 +22,9 @@ starting new files after N seconds; files already written are skipped on the nex
 
     python3 oracle/make_golden.py --ext rtf --jobs 3 --timeout 60 --budget 100   # repeat until "0 files"
 
+OpenDocument (--ext odt|ods|odp): LibreOffice round trip + plain-text cross-check, see
+oracle/odf_golden.py (python3 oracle/make_golden.py --ext odt --budget 150, repeat until "0 left").
+
 Requires LibreOffice >= 7.x (soffice on PATH, $SOFFICE, or the default macOS
 app location) and Pillow.
 """
@@ -374,6 +377,11 @@ EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp":
 
 
 def main() -> None:
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--ext")
+    if pre.parse_known_args()[0].ext in ("odt", "ods", "odp"):
+        from odf_golden import main as odf_main
+        sys.exit(odf_main(sys.argv[1:]))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--jobs", type=int, default=max(1, min(8, (os.cpu_count() or 2) // 2)))
     ap.add_argument("--timeout", type=int, default=120)
@@ -382,7 +390,8 @@ def main() -> None:
     ap.add_argument("--missing-struct", action="store_true", help="only files whose golden has no 'struct' yet (resume)")
     ap.add_argument("--file", type=Path, help="process a single arbitrary .doc and print the result")
     ap.add_argument("--print", action="store_true")
-    ap.add_argument("--ext", choices=["doc", "rtf"], default="doc", help="corpus: doc (default) or rtf (data_dir()/rtf)")
+    ap.add_argument("--ext", choices=["doc", "rtf", "odt", "ods", "odp"], default="doc",
+                    help="corpus: doc (default), rtf (data_dir()/rtf) or odt/ods/odp (data_dir()/odf, oracle/odf_golden.py)")
     ap.add_argument("--budget", type=float, help="stop starting new conversions after this many seconds")
     args = ap.parse_args()
     rtf = args.ext == "rtf"

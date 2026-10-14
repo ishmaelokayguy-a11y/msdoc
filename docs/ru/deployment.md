@@ -15,11 +15,11 @@
 ```bash
 # на машине с интернетом / сборкой
 python3 -m pip install build
-python3 -m build                      # dist/msdoc-0.4.0-py3-none-any.whl и .tar.gz
+python3 -m build                      # dist/msdoc-0.5.0-py3-none-any.whl и .tar.gz
 sha256sum dist/*                      # запишите контрольные суммы
 
 # в контуре
-python3 -m pip install --no-index msdoc-0.4.0-py3-none-any.whl
+python3 -m pip install --no-index msdoc-0.5.0-py3-none-any.whl
 python3 -c "import msdoc; print(msdoc.__version__)"
 ```
 

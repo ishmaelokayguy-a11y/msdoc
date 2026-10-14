@@ -2,15 +2,18 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Structured access to .xls, .ppt and .rtf.  /  Структурный доступ к .xls, .ppt и .rtf.
+"""Structured access to .xls/.ods, .ppt/.odp and .rtf/.odt.  /  Структурный доступ к .xls/.ods, .ppt/.odp и .rtf/.odt.
 
     python3 examples/office_formats.py book.xls
     python3 examples/office_formats.py deck.ppt
     python3 examples/office_formats.py letter.rtf
+    python3 examples/office_formats.py table.ods
+    python3 examples/office_formats.py deck.odp --markdown
     python3 examples/office_formats.py book.xls --markdown      # the Markdown a model would receive
 
 .xls  -> doc.sheets: name, hidden, cells {(row, col): text} (formatted as Excel shows it), merges.
 .ppt  -> doc.slides: texts, notes, comments, links, images (indexes into doc.images).
+.ods  -> like .xls, .odp -> like .ppt, .odt -> like .rtf.
 .rtf  -> like .doc: doc.stories (main, footnotes, ...), doc.blocks (paragraphs, tables), doc.images.
 """
 import argparse
@@ -30,7 +33,7 @@ def show(path: Path) -> None:
         for r in rows[:20]:
             cols = sorted(c for rr, c in sh.cells if rr == r)
             print("  " + "\t".join(sh.cells[(r, c)] for c in cols))
-    if doc.format == "rtf":
+    if doc.format in ("rtf", "odt"):
         kinds = {}
         for b in doc.blocks:
             kinds[type(b).__name__] = kinds.get(type(b).__name__, 0) + 1

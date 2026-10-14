@@ -11,7 +11,8 @@
 | OLE-файл другой программы (`.xls`, `.ppt`, `.msg` и т. п.) | `UnsupportedFormatError` |
 | Документ с паролем | `EncryptedDocumentError` (расшифровка не реализована) |
 | `.rtf` (начинается с `{\rtf`) | читается парсером RTF, см. README |
-| `.docx`, `.odt`, текст, любой другой не-OLE файл | `NotOleFileError` |
+| `.odt`, `.ods`, `.odp` (zip с `mimetype` OpenDocument) | читаются парсерами ODF, см. README |
+| `.docx`, текст, любой другой не-OLE файл | `NotOleFileError` |
 | Повреждённый `.doc` | `CorruptDocumentError`, либо частичный результат с записью в `Document.warnings` |
 
 ## Что именно извлекается

@@ -32,6 +32,7 @@ positions) about 94 % on dev and 86 % on the held-out set — see [docs/en/quali
 - [Plain text and all document parts](#plain-text-and-all-document-parts)
 - [Document structure (blocks)](#document-structure-blocks)
 - [Excel and PowerPoint](#excel-xls-and-powerpoint-ppt) · [RTF](#rich-text-format-rtf)
+- [OpenDocument (.odt, .ods, .odp)](#opendocument-odt-ods-odp)
 - [Errors](#errors)
 - [Batch processing](#batch-processing)
 - [Limitations](#limitations)
@@ -42,7 +43,7 @@ positions) about 94 % on dev and 86 % on the held-out set — see [docs/en/quali
 From a prebuilt wheel (no dependencies, no internet needed):
 
 ```bash
-python3 -m pip install msdoc-0.4.0-py3-none-any.whl
+python3 -m pip install msdoc-0.5.0-py3-none-any.whl
 ```
 
 From source (just put `src/` on `PYTHONPATH`; installation is optional):
@@ -213,14 +214,41 @@ anchors) and `images` (`\pict` PNG/JPEG/EMF/WMF/DIB, hex or `\bin`; `\shppict` i
   (a warning is added); only `MsDocError` subclasses are raised. Quality against LibreOffice on the RTF corpus:
   see [docs/en/quality.md](docs/en/quality.md).
 
+## OpenDocument (.odt, .ods, .odp)
+
+A zip whose `mimetype` entry (or manifest root entry) is an OpenDocument type (`text`, `spreadsheet`,
+`presentation`, also the `-template` variants `.ott/.ots/.otp`) is read as ODF before the OLE check.
+`doc.format` is `"odt"`, `"ods"` or `"odp"`, and the result has the same shape as the older formats:
+
+- **`.odt`** like `.doc`: `stories`, `blocks` (headings from `text:h`, lists with labels computed from the list
+  styles, tables with merged and nested cells, hyperlinks, note anchors), `notes`, `extra` and `images`.
+  Tracked deletions are dropped, fields show their saved text (except page-number and chapter fields, which
+  LibreOffice re-expands from layout: page 0 / empty outside the first page).
+- **`.ods`** like `.xls`: `doc.sheets` with the text LibreOffice displays in each cell (ODF stores it), merged
+  ranges, hidden sheets, hyperlinks, pictures; repeated rows/columns are expanded with hard caps; cell comments
+  go to `stories["comments"]`. Formulas are not evaluated (RAND, TODAY, ... keep the saved text).
+- **`.odp`** like `.ppt`: `doc.slides` with titles, outline text, text boxes, tables, groups, notes, comments,
+  links and pictures; master-page text is not reported (as in LibreOffice's import).
+
+Pictures are `draw:image` package entries and `office:binary-data`; external links, embedded objects, charts and
+their replacement pictures are not reported. The package is treated as hostile: entry count, sizes and compression
+ratio are bounded, amplifying DTD entities are refused and external ones never loaded, very deep XML is flattened.
+
+```python
+doc = msdoc.extract("table.ods")
+for sheet in doc.sheets:
+    print(sheet.name, sheet.hidden, len(sheet.cells))
+print(msdoc.to_markdown("deck.odp").text)      # '## Slide N', titles, bullets, Notes
+```
+
 ## Errors
 
 | Exception | When |
 |---|---|
-| `NotOleFileError` | the input is neither an OLE2 container (`.doc`/`.xls`/`.ppt`) nor RTF (`{\rtf`) |
-| `UnsupportedFormatError` | Word 6/95/2.0 (older than Word 97), Excel 2–7, PowerPoint 4/95, or an OLE file that is none of the three |
-| `EncryptedDocumentError` | the document is password-protected |
-| `CorruptDocumentError` | the container or Word structures are damaged beyond recovery |
+| `NotOleFileError` | the input is neither an OLE2 container (`.doc`/`.xls`/`.ppt`), nor RTF (`{\rtf`), nor an OpenDocument package (other zips such as `.docx` included) |
+| `UnsupportedFormatError` | Word 6/95/2.0 (older than Word 97), Excel 2–7, PowerPoint 4/95, an OLE file that is none of the three, or an OpenDocument package of another kind (drawings `.odg`, formulas, ...) |
+| `EncryptedDocumentError` | the document is password-protected (also an encrypted ODF package) |
+| `CorruptDocumentError` | the container or Word structures are damaged beyond recovery (for ODF: a damaged zip, malformed or oversized XML, a bomb-like entry) |
 
 All of them derive from `MsDocError`, so `except msdoc.MsDocError` is usually enough. No other
 exception type escapes the library. Non-fatal problems end up in `doc.warnings`.
@@ -235,9 +263,10 @@ python3 examples/office_formats.py book.xls                # sheets / cells
 python3 examples/office_formats.py deck.ppt --markdown     # slides as Markdown
 python3 examples/office_formats.py letter.rtf              # stories / blocks of an RTF
 python3 examples/rtf_demo.py                               # RTF built in code -> extraction -> Markdown
+python3 examples/odf_demo.py                               # .odt/.ods/.odp built in code -> Markdown
 ```
 
-Directories may mix `.doc`, `.xls`, `.ppt` and `.rtf`; `to_markdown.py` writes `name.xls.md` / `name.ppt.md` /
+Directories may mix `.doc`, `.xls`, `.ppt`, `.rtf`, `.odt`, `.ods` and `.odp`; `to_markdown.py` writes `name.xls.md` / `name.ppt.md` /
 `name.rtf.md` for the latter, so equal stems never clash.
 
 Every file is processed in its own process with a hard timeout, so one “bad” file cannot stop the batch.
@@ -248,7 +277,7 @@ leaves them as they are).
 
 In short (details in [docs/en/limitations.md](docs/en/limitations.md)):
 
-- Only Word 97–2003 `.doc` (`nFib ≥ 0xC1`), Excel 97–2003 `.xls`, PowerPoint 97–2003 `.ppt` and `.rtf`. Not `.docx`/`.xlsx`/`.pptx` or the pre-97 formats.
+- Only Word 97–2003 `.doc` (`nFib ≥ 0xC1`), Excel 97–2003 `.xls`, PowerPoint 97–2003 `.ppt`, `.rtf`, `.odt`, `.ods` and `.odp`. Not `.docx`/`.xlsx`/`.pptx` or the pre-97 formats.
 - Encrypted documents are not decrypted (`EncryptedDocumentError`).
 - Of the formatting only structural elements are kept (headings, lists, tables, links, footnotes);
   fonts, colours, alignment, bold/italic are not.

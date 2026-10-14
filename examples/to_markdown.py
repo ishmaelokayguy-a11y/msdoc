@@ -22,7 +22,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-SUFFIXES = {".doc", ".xls", ".ppt", ".rtf"}
+SUFFIXES = {".doc", ".xls", ".ppt", ".rtf", ".odt", ".ods", ".odp"}
 EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp": "bmp", "image/tiff": "tif",
        "image/x-wmf": "wmf", "image/x-emf": "emf", "image/x-pict": "pct"}
 PLACEHOLDER = re.compile(r"!\[([^\]]*)\]\(image:(\d+)\)")

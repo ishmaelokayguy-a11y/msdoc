@@ -76,6 +76,18 @@ def main() -> None:
             from structscore import blocks_to_neutral
             res["struct"] = blocks_to_neutral(doc.blocks)
             res["links"] = _links(doc)
+        # Spreadsheets / presentations (xls, ppt, ods, odp): only emitted when present, so the output
+        # for .doc/.rtf is unchanged. Scored by oracle/odf_score.py for ods/odp.
+        if getattr(doc, "sheets", None):
+            res["sheets"] = [{"name": sh.name, "hidden": bool(sh.hidden),
+                              "cells": [[r, c, t] for (r, c), t in sorted(sh.cells.items())],
+                              "merges": [list(mg) for mg in sh.merges],
+                              "links": [[r, c, u] for (r, c), u in sorted(getattr(sh, "links", {}).items())]}
+                             for sh in doc.sheets]
+        if getattr(doc, "slides", None):
+            res["slides"] = [{"texts": list(sl.texts), "notes": list(sl.notes),
+                              "comments": list(getattr(sl, "comments", [])),
+                              "links": [[t, u] for t, u in getattr(sl, "links", [])]} for sl in doc.slides]
         res["warnings"] = list(getattr(doc, "warnings", []))[:50]
     except NotImplementedError as e:
         res = {"status": "not_implemented", "error": str(e)}

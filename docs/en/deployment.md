@@ -15,11 +15,11 @@ Option A — a wheel (recommended):
 ```bash
 # on a machine with internet / a build machine
 python3 -m pip install build
-python3 -m build                      # dist/msdoc-0.4.0-py3-none-any.whl and .tar.gz
+python3 -m build                      # dist/msdoc-0.5.0-py3-none-any.whl and .tar.gz
 sha256sum dist/*                      # write down the checksums
 
 # inside the isolated environment
-python3 -m pip install --no-index msdoc-0.4.0-py3-none-any.whl
+python3 -m pip install --no-index msdoc-0.5.0-py3-none-any.whl
 python3 -c "import msdoc; print(msdoc.__version__)"
 ```
 

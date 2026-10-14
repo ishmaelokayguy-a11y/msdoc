@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from typing import BinaryIO, NamedTuple, Union
 
-from . import blocks as blocks_mod, cfb, fib as fibmod, images, pieces, ppt, props, rtf, stories, xls
+from . import blocks as blocks_mod, cfb, fib as fibmod, images, odf, pieces, ppt, props, rtf, stories, xls
 from .errors import CorruptDocumentError, MsDocError, UnsupportedFormatError
 from .model import Document, Image
 
@@ -82,8 +82,26 @@ def _extract_other(container, images_enabled: bool):
     return None
 
 
+def _extract_odf(data: bytes, mimetype: str, images_enabled: bool) -> Document:
+    """OpenDocument package, dispatched on its media type (mimetype entry / manifest)."""
+    kind = odf.ODF_MIMETYPES.get(mimetype)
+    if kind is None:
+        raise UnsupportedFormatError("OpenDocument type %s is not supported (only text, spreadsheet, presentation)"
+                                     % mimetype[:100])
+    pkg = odf.open_package(data)
+    if kind == "odt":
+        from . import odt
+        return odt.parse(pkg, images_enabled)
+    if kind == "ods":
+        from . import ods
+        return ods.parse(pkg, images_enabled)
+    from . import odp
+    return odp.parse(pkg, images_enabled)
+
+
 def extract(source: Source, *, images_enabled: bool = True) -> Document:
-    """Extract text stories and images from a Word 97-2003 .doc file (also .xls, .ppt, .rtf).
+    """Extract text stories and images from a Word 97-2003 .doc file (also .xls, .ppt, .rtf,
+    and OpenDocument .odt/.ods/.odp).
 
     Raises only MsDocError subclasses.
     """
@@ -96,6 +114,17 @@ def extract(source: Source, *, images_enabled: bool = True) -> Document:
             raise
         except Exception as e:  # pragma: no cover - last-resort guard, see below
             raise CorruptDocumentError(f"internal error: {type(e).__name__}: {e}") from e
+    if bytes(data[:4]) == odf.ZIP_SIGNATURE:
+        # A zip is looked at before the OLE check: an OpenDocument package by its media type.
+        # Any other zip (OOXML .docx/.xlsx/.pptx, plain archives) falls through to NotOleFileError.
+        mimetype = odf.detect(data)
+        if mimetype is not None:
+            try:
+                return _extract_odf(data, mimetype, images_enabled)
+            except MsDocError:
+                raise
+            except Exception as e:  # pragma: no cover - last-resort guard
+                raise CorruptDocumentError(f"internal error: {type(e).__name__}: {e}") from e
     if data[:8] != cfb.CFB_SIGNATURE and (bytes(data[:2]) in _LEGACY_WIDENTS or bytes(data[:4]) in _LEGACY_BIFF):
         raise UnsupportedFormatError("legacy non-OLE binary (Word 1/2 or Excel 2-4)")
     try:

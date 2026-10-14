@@ -31,7 +31,8 @@ class Image:
     mime: str
     """e.g. image/png, image/jpeg, image/x-wmf, image/x-emf, image/x-pict, image/bmp."""
     kind: Literal["inline", "floating"]
-    """inline = character picture (sprmCPicLocation / 0x01); floating = OfficeArt shape (0x08)."""
+    """inline = character picture (sprmCPicLocation / 0x01; ODF text:anchor-type="as-char");
+    floating = OfficeArt shape (0x08; any other ODF anchor)."""
     story: Story = "main"
     cp: Optional[int] = None
     """Character position of the anchor character, if known."""
@@ -104,7 +105,7 @@ Block = Union[Paragraph, Table]
 
 @dataclass
 class Sheet:
-    """One worksheet of an .xls workbook. Coordinates are 0-based (row, column)."""
+    """One worksheet of an .xls / .ods workbook. Coordinates are 0-based (row, column)."""
     name: str
     hidden: bool = False
     cells: dict = field(default_factory=dict)
@@ -119,7 +120,7 @@ class Sheet:
 
 @dataclass
 class Slide:
-    """One slide of a .ppt presentation."""
+    """One slide of a .ppt / .odp presentation."""
     index: int
     """1-based position in the slide show."""
     texts: list = field(default_factory=list)
@@ -141,11 +142,11 @@ class Document:
     images: list[Image] = field(default_factory=list)
     nfib: Optional[int] = None
     format: str = "doc"
-    """"doc", "xls", "ppt" or "rtf"."""
+    """"doc", "xls", "ppt", "rtf", "odt", "ods" or "odp"."""
     sheets: list = field(default_factory=list)
-    """Worksheets (format == "xls")."""
+    """Worksheets (format == "xls" or "ods")."""
     slides: list = field(default_factory=list)
-    """Slides (format == "ppt")."""
+    """Slides (format == "ppt" or "odp")."""
     warnings: list[str] = field(default_factory=list)
     """Non-fatal problems (skipped structures, recovered corruption)."""
     blocks: list[Block] = field(default_factory=list)

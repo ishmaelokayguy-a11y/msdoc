@@ -149,3 +149,40 @@ Reference: LibreOffice's RTF -> ODT conversion, scored with the same `oracle/com
 Known gaps: LibreOffice stores a PNG fallback next to every WMF/EMF picture (we return the vector picture
 only); fields LibreOffice recomputes (DATE, page numbers in the body of multi-page documents) keep their
 cached RTF result; OLE objects outside tables are not reported (LibreOffice embeds them).
+
+## OpenDocument (.odt, .ods, .odp): corpus and oracle
+
+Corpus: the `.odt/.ods/.odp` (and `.ott/.ots/.otp`) files of LibreOffice core (`sw/qa`, `sc/qa`, `sd/qa`, xmloff,
+chart2, vcl, ...), Apache Tika/POI, the ODF Toolkit, odfdo, odfpy, ezodf and pandoc (`oracle/office_fetch.py --ext odf`),
+deduplicated, 15 % held out, in `data/odf/` (layout, kinds and exact text definitions: `data/odf/README.md`).
+
+The reference must not be built from the file's own `content.xml` (that is what the parser reads, so it would be a
+tautology). LibreOffice loads every file and (a) saves it again in the same format; that LibreOffice-written ODF is
+parsed with the existing walkers and drives the score; (b) exports it as plain text / CSV, an independent cross-check
+reported as `plain`. Score = 0.7 × text + 0.3 × picture F1; `.odt` uses the `.doc`/`.rtf` story definition plus the
+structure score, `.ods`/`.odp` the `.xls`/`.ppt` line definitions (`oracle/odf_score.py`).
+
+```bash
+python3 oracle/office_fetch.py --ext odf                 # corpus (resumable)
+python3 oracle/make_golden.py --ext odt --budget 100     # golden; repeat until "0 left" (also ods, odp)
+python3 oracle/compare.py --ext ods --kind normal template
+python3 oracle/compare.py --ext odp --diff <id>
+python3 oracle/compare.py --ext odt --check              # ratchet vs data/odf/baseline-odt.json
+python3 oracle/compare.py --ext odt --update-baseline    # seed the baseline once the parser exists
+```
+
+Results (version 0.5.0; `normal` = without fuzz, encrypted and rejected files):
+
+| Format | Split | Files | Mean | Normal files |
+|---|---|---|---|---|
+| `.odt` | dev | 1796 | 0.9967 | 0.9970 |
+| `.odt` | holdout | 341 | 0.9959 | — |
+| `.ods` | dev | 800 | 0.9894 | 0.9892 |
+| `.ods` | holdout | 129 | 0.9759 | — |
+| `.odp` | dev | 309 | 0.9950 | 0.9948 |
+| `.odp` | holdout | 61 | 0.9999 | — |
+
+No crashes or timeouts. The ODF scores are higher than for the binary formats because ODF is LibreOffice's native
+format. Known differences that are LibreOffice behaviour: formulas it recalculates (RAND, TODAY, add-in functions),
+date/author/file-name fields, page-number fields, pictures LibreOffice generates for linked objects; see
+`docs/lo_disagreements.md`.

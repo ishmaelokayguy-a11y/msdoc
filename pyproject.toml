@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "msdoc"
-version = "0.4.0"
-description = "Pure-Python text and image extractor for Microsoft Word 97-2003 (.doc), Excel (.xls), PowerPoint (.ppt) and RTF (.rtf) files"
+version = "0.5.0"
+description = "Pure-Python text and image extractor for Microsoft Word 97-2003 (.doc), Excel (.xls), PowerPoint (.ppt), RTF (.rtf) and OpenDocument (.odt, .ods, .odp) files"
 readme = "README.md"
 license = "MPL-2.0"
 license-files = ["LICENSE", "NOTICE"]

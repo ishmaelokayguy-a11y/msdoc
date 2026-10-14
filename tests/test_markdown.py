@@ -70,4 +70,4 @@ def test_public_exports_and_version():
     import msdoc
     for name in ("to_markdown", "MarkdownResult", "Paragraph", "Table", "Row", "Cell", "Link"):
         assert hasattr(msdoc, name)
-    assert msdoc.__version__ == "0.4.0"
+    assert msdoc.__version__ == "0.5.0"

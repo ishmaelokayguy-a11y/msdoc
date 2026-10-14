@@ -35,6 +35,14 @@ Extra RTF kinds: notrtf (named .rtf, not RTF) -> 1 unless crash/hang; fuzz (Libr
 crash-test / CVE samples) -> 1 for a clean MsDocError, else scored against the golden.
 Hyperlinks: "links" = F1 of the link URLs (multiset) vs LibreOffice's text:a, reported
 only (the link count is already part of the structure score).
+
+OpenDocument (--ext odt|ods|odp; corpus `office_fetch.py --ext odf`, golden `make_golden.py --ext odt|ods|odp`)
+scores data_dir()/odf (corpus/<ext>/<split>/<id>.<ext>, golden/<id>.json, baseline-<ext>.json,
+struct_baseline-odt.json; reports/<ext>.{md,json}) with oracle/odf_score.py (text definitions there):
+
+    python3 oracle/compare.py --ext ods --kind normal template
+    python3 oracle/compare.py --ext odp --diff ID
+    python3 oracle/compare.py --ext odt --check          # ratchet (empty baseline = nothing to regress)
 """
 from __future__ import annotations
 
@@ -55,6 +63,7 @@ from structscore import struct_score  # noqa: E402
 from common import REPO, STORY_KEYS, UNORDERED_STORIES, data_dir, load_json, norm_story, save_json  # noqa: E402
 
 TEXT_W, IMG_W = 0.7, 0.3
+ODF_EXTS = ("odt", "ods", "odp")  # data_dir()/odf, scored by oracle/odf_score.py
 VECTOR = {"image/x-wmf", "image/x-emf", "image/x-pict", "image/x-svm", "image/svg+xml", "application/octet-stream"}
 EPS = 1e-4
 
@@ -142,6 +151,9 @@ EXPECTED_ERROR = {"legacy": "UnsupportedFormatError", "encrypted": "EncryptedDoc
 
 
 def score_file(m: dict, g: dict | None, r: dict) -> dict:
+    if m.get("ext") in ODF_EXTS:
+        from odf_score import score_file as odf_score_file
+        return odf_score_file(m, g, r)
     st = r["status"]
     out = {"status": st, "kind": m["kind"]}
     if st in ("crash", "timeout", "not_implemented"):
@@ -201,6 +213,10 @@ class Layout:
         if ext == "doc":
             self.manifest, self.corpus, self.golden = d / "corpus" / "manifest.json", d / "corpus", d / "golden"
             self.baseline, self.struct_baseline = d / "baseline.json", d / "struct_baseline.json"
+        elif ext in ODF_EXTS:
+            r = d / "odf"
+            self.manifest, self.corpus, self.golden = r / "manifest.json", r / "corpus" / ext, r / "golden"
+            self.baseline, self.struct_baseline = r / f"baseline-{ext}.json", r / f"struct_baseline-{ext}.json"
         else:
             r = d / ext
             self.manifest, self.corpus, self.golden = r / "manifest.json", r / "corpus", r / "golden"
@@ -246,6 +262,10 @@ def show_diff(fid: str, lay: "Layout", m: dict, impl: str, timeout: float) -> No
     dump = REPO / "reports" / "dump" / fid
     r = run_extractor(path, impl, timeout, dump)
     g = load_json(lay.golden / f"{fid}.json")
+    if lay.ext in ("ods", "odp"):
+        from odf_score import show_diff as odf_show_diff
+        odf_show_diff(lay.ext, fid, m, g, r, lay.golden)
+        return
     print(f"# {fid}  kind={m['kind']} source={m['source']}:{m['path']}")
     print(f"# file: {path}")
     print(json.dumps(score_file(m, g, r), ensure_ascii=False, indent=1))
@@ -314,6 +334,12 @@ def write_report(results: dict, manifest: dict, label: str, elapsed: float, ext:
     lk = [v["links"] for v in scored.values() if "links" in v]
     if lk:
         lines.append(f"hyperlink URL F1 mean {sum(lk) / len(lk):.4f} (n={len(lk)})")
+    for key, what in (("plain", "similarity to LibreOffice's plain-text/CSV export (cross-check, not scored)"),
+                      ("hidden", "hidden-sheet flag accuracy"), ("merges", "merged-range F1"),
+                      ("comments", "slide comment similarity")):  # OpenDocument extras (odf_score.py)
+        xs = [v[key] for v in scored.values() if v.get(key) is not None]
+        if xs:
+            lines.append(f"{what} mean {sum(xs) / len(xs):.4f} (n={len(xs)})")
     lines += ["", "## worst files", "", "| id | kind | score | text | img | note |", "|---|---|---|---|---|---|"]
     worst = sorted(scored.items(), key=lambda kv: kv[1]["score"])[:40]
     for fid, v in worst:
@@ -340,7 +366,7 @@ def main() -> None:
     ap.add_argument("--diff", metavar="ID")
     ap.add_argument("--label", default="latest")
     ap.add_argument("--quiet", action="store_true")
-    ap.add_argument("--ext", choices=["doc", "rtf"], default="doc", help="corpus to score (default doc)")
+    ap.add_argument("--ext", choices=["doc", "rtf", *ODF_EXTS], default="doc", help="corpus to score (default doc)")
     args = ap.parse_args()
 
     d = data_dir()
@@ -348,9 +374,11 @@ def main() -> None:
     if args.ext != "doc" and args.label == "latest":
         args.label = args.ext
     manifest = load_json(lay.manifest)
+    if manifest and args.ext in ODF_EXTS:  # one manifest for the three OpenDocument formats
+        manifest = {k: v for k, v in manifest.items() if v["ext"] == args.ext}
     if not manifest:
         sys.exit(f"no corpus at {lay.manifest.parent} — run oracle/fetch_corpus.py (rtf: oracle/office_fetch.py --ext rtf) "
-                 "and oracle/make_golden.py [--ext rtf]")
+                 "and oracle/make_golden.py [--ext rtf]; odt/ods/odp: oracle/office_fetch.py --ext odf, make_golden.py --ext <ext>")
     if args.diff:
         show_diff(args.diff, lay, manifest[args.diff], args.impl, args.timeout)
         return
