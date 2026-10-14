@@ -2,10 +2,10 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Convert .doc files to Markdown + media files.  /  Конвертация .doc в Markdown + картинки.
+"""Convert .doc, .xls and .ppt files to Markdown + media files.  /  Конвертация .doc в Markdown + картинки.
 
     python3 examples/to_markdown.py report.doc                # -> report.md and report_media/
-    python3 examples/to_markdown.py docs_dir out_dir --jobs 4 # every .doc under docs_dir
+    python3 examples/to_markdown.py docs_dir out_dir --jobs 4 # every .doc, .xls and .ppt under docs_dir
     python3 examples/to_markdown.py report.doc --stdout       # print Markdown only
 
 Placeholders ``![Media N](image:N)`` in the text are rewritten to relative links
@@ -22,6 +22,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+SUFFIXES = {".doc", ".xls", ".ppt"}
 EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp": "bmp", "image/tiff": "tif",
        "image/x-wmf": "wmf", "image/x-emf": "emf", "image/x-pict": "pct"}
 PLACEHOLDER = re.compile(r"!\[([^\]]*)\]\(image:(\d+)\)")
@@ -90,10 +91,11 @@ def main() -> None:
         return
     if not args.dst:
         ap.error("output directory required for a directory input")
-    files = sorted(p for p in args.src.rglob("*") if p.is_file() and p.suffix.lower() == ".doc")
+    files = sorted(p for p in args.src.rglob("*") if p.is_file() and p.suffix.lower() in SUFFIXES)
 
     def job(p: Path):
-        rel = p.relative_to(args.src).with_suffix(".md")
+        rel = p.relative_to(args.src)
+        rel = rel.with_suffix(".md") if p.suffix.lower() == ".doc" else rel.with_name(rel.name + ".md")  # a.xls -> a.xls.md: no clash with a.doc
         return run_isolated(p, args.dst / rel, args)
 
     counts: dict[str, int] = {}

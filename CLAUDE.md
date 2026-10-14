@@ -88,6 +88,8 @@ regressions, fix them; do not try to bypass the hook.
 | `stories.py` | stories, paragraphs, fields, tables, special chars | prompts/13-stories.md |
 | `images.py` | inline pictures (Data stream) | prompts/14-inline-images.md |
 | `images.py` | floating pictures (OfficeArt) | prompts/15-floating-images.md |
+| `xls.py`, `numfmt.py` | Excel 97-2003 (BIFF8) workbooks and number formats -> `Document.sheets` + blocks | oracle: `oracle/office_compare.py --ext xls` |
+| `ppt.py` | PowerPoint 97-2003 (persist directory, slides, notes, comments, pictures) -> `Document.slides` + blocks | oracle: `oracle/office_compare.py --ext ppt` |
 | `blocks.py`, `markdown.py` | structure (headings, lists, HTML tables, image/note anchors) -> Markdown | prompts/40-blocks.md |
 | all | robustness on broken/fuzzed input | prompts/20-robustness.md |
 

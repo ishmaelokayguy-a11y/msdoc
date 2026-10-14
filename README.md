@@ -2,7 +2,8 @@
 
 **English** · [Русский](README.ru.md)
 
-Extract **text, structure and images** from binary Word 97–2003 files (`.doc`) in pure Python.
+Extract **text, structure and images** from binary Word 97–2003 files (`.doc`) — and, with the same API,
+from Excel 97–2003 workbooks (`.xls`) and PowerPoint 97–2003 presentations (`.ppt`) — in pure Python.
 The result is ready-to-use **Markdown** (headings, lists, HTML tables, links, footnotes) plus the
 pictures as a separate list of bytes with their MIME types. Built for feeding documents to LLMs.
 
@@ -29,6 +30,7 @@ positions) about 94 % on dev and 86 % on the held-out set — see [docs/en/quali
 - [Feeding an LLM](#feeding-an-llm)
 - [Plain text and all document parts](#plain-text-and-all-document-parts)
 - [Document structure (blocks)](#document-structure-blocks)
+- [Excel and PowerPoint](#excel-xls-and-powerpoint-ppt)
 - [Errors](#errors)
 - [Batch processing](#batch-processing)
 - [Limitations](#limitations)
@@ -39,7 +41,7 @@ positions) about 94 % on dev and 86 % on the held-out set — see [docs/en/quali
 From a prebuilt wheel (no dependencies, no internet needed):
 
 ```bash
-python3 -m pip install msdoc-0.2.0-py3-none-any.whl
+python3 -m pip install msdoc-0.3.0-py3-none-any.whl
 ```
 
 From source (just put `src/` on `PYTHONPATH`; installation is optional):
@@ -163,12 +165,39 @@ for b in doc.blocks:
 `images` (indexes into `doc.images`), `notes`, `links`. Inside `text`, a picture is the character `U+FFFC`
 and a footnote reference is `U+E000`. Details: [docs/en/api.md](docs/en/api.md).
 
+## Excel (.xls) and PowerPoint (.ppt)
+
+`msdoc.extract` and `msdoc.to_markdown` detect the format from the OLE streams (`WordDocument`,
+`Workbook`, `PowerPoint Document`), so the calls are the same as for `.doc`; `doc.format` is
+`"doc"`, `"xls"` or `"ppt"`.
+
+```python
+doc = msdoc.extract("book.xls")
+for sheet in doc.sheets:                        # Sheet: name, hidden, cells, merges, links, images
+    print(sheet.name, sheet.cells.get((0, 0)))  # cells: {(row, col): displayed text}, 0-based
+
+doc = msdoc.extract("talk.ppt")
+for slide in doc.slides:                        # Slide: index, texts, notes, comments, images
+    print(slide.index, slide.texts, slide.notes)
+```
+
+- **Excel**: BIFF8 only. Cell text is what Excel/LibreOffice *displays* (number, date and fraction formats are
+  applied; formulas give their last saved value). Markdown: one `## Sheet` heading and an HTML table per
+  visible sheet, merged cells as `rowspan`/`colspan`. Pictures are anchored to cells.
+- **PowerPoint**: the newest saved version of each slide (also when the edit history is damaged), title/body/
+  text-box paragraphs, speaker notes, review comments and pictures. Markdown: `## Slide N`, titles as `###`,
+  body text as bullets, then `Comments` and `Notes`.
+- Not supported (`UnsupportedFormatError`): Excel 2–7 (BIFF2–5), PowerPoint 4/95; password-protected files raise
+  `EncryptedDocumentError`. Charts, embedded OLE objects, macros, shape geometry and animations are ignored.
+- Quality was measured against LibreOffice the same way as for `.doc` (`oracle/office_*.py`, see
+  [docs/en/quality.md](docs/en/quality.md)): about 0.97 (`.xls`) and 0.92–0.95 (`.ppt`) on the combined text/picture score.
+
 ## Errors
 
 | Exception | When |
 |---|---|
-| `NotOleFileError` | the input is not an OLE2 container (not a `.doc`) |
-| `UnsupportedFormatError` | Word 6/95/2.0 (older than Word 97) or an OLE file without a `WordDocument` stream |
+| `NotOleFileError` | the input is not an OLE2 container (not a `.doc`/`.xls`/`.ppt`) |
+| `UnsupportedFormatError` | Word 6/95/2.0 (older than Word 97), Excel 2–7, PowerPoint 4/95, or an OLE file that is none of the three |
 | `EncryptedDocumentError` | the document is password-protected |
 | `CorruptDocumentError` | the container or Word structures are damaged beyond recovery |
 
@@ -181,7 +210,12 @@ exception type escapes the library. Non-fatal problems end up in `doc.warnings`.
 python3 examples/to_markdown.py input_dir output_dir --jobs 4 --timeout 60
 python3 examples/to_markdown.py report.doc                 # -> report.md and report_media/
 python3 examples/extract_folder.py input output            # text.txt + stories.json + images/
+python3 examples/office_formats.py book.xls                # sheets / cells
+python3 examples/office_formats.py deck.ppt --markdown     # slides as Markdown
 ```
+
+Directories may mix `.doc`, `.xls` and `.ppt`; `to_markdown.py` writes `name.xls.md` / `name.ppt.md` for the
+latter two, so equal stems never clash.
 
 Every file is processed in its own process with a hard timeout, so one “bad” file cannot stop the batch.
 `to_markdown.py` rewrites the placeholders into relative links to the saved files (`--keep-placeholders`
@@ -191,7 +225,7 @@ leaves them as they are).
 
 In short (details in [docs/en/limitations.md](docs/en/limitations.md)):
 
-- Only Word 97–2003 `.doc` (`nFib ≥ 0xC1`). Not `.docx`, `.rtf` or Word 6/95.
+- Only Word 97–2003 `.doc` (`nFib ≥ 0xC1`), Excel 97–2003 `.xls` and PowerPoint 97–2003 `.ppt`. Not `.docx`/`.xlsx`/`.pptx`, `.rtf` or the pre-97 formats.
 - Encrypted documents are not decrypted (`EncryptedDocumentError`).
 - Of the formatting only structural elements are kept (headings, lists, tables, links, footnotes);
   fonts, colours, alignment, bold/italic are not.

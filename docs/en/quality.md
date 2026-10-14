@@ -102,3 +102,33 @@ The text score uses `rapidfuzz` if it is installed and `difflib` otherwise; the 
 `--update-baseline` must be run in the same environment where the check is later run.
 
 Data in `data/` (corpus and references) are required; they are not part of the package or the repository.
+
+## Excel (.xls) and PowerPoint (.ppt)
+
+The same oracle idea as for `.doc`, in `oracle/office_*.py`: `office_fetch.py` builds a corpus from the LibreOffice
+`qa` files and the Apache POI test data (15 % held out), `office_golden.py` converts every file with LibreOffice to
+`.ods`/`.odp` and parses that (displayed cell text, merged ranges, slide texts and notes, picture fingerprints),
+`office_compare.py` scores msdoc against it:
+
+```bash
+python3 oracle/office_golden.py --ext xls --split dev        # resumable, needs soffice
+python3 oracle/office_compare.py --ext xls                   # dev split, reports/office-xls.md
+python3 oracle/office_compare.py --ext ppt --diff <id>       # slide/sheet diff for one file
+python3 oracle/office_compare.py --ext xls --check           # ratchet against data/office/baseline-xls.json
+python3 oracle/office_compare.py --ext ppt --split holdout   # final evaluation
+```
+
+Score = 0.7 × text similarity + 0.3 × picture F1 (xls text = per sheet the name plus one tab-separated line per row;
+ppt text = per slide the paragraphs, then the notes). Files that must be rejected (encrypted, pre-97, not OLE) score 1
+when the matching `MsDocError` is raised; a crash, hang or foreign exception scores 0.
+
+| version 0.3.0 | files | mean | no crashes |
+|---|---|---|---|
+| `.xls` dev | 641 | 0.974 | yes |
+| `.xls` holdout | 115 | 0.981 | yes |
+| `.ppt` dev | 190 | 0.957 | yes |
+| `.ppt` holdout | 26 | 0.969 | yes |
+
+Known differences that are LibreOffice behaviour, not defects: formulas that LibreOffice recalculates (it shows its own
+result or `Err:5xx` where Excel stored a value), pivot-cache sheets, fields that show the current date, a default empty
+slide for presentations without slides, and a few files where LibreOffice repairs a damaged structure differently.

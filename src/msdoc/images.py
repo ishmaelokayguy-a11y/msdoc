@@ -172,6 +172,91 @@ def _dib_to_bmp(dib: bytes) -> bytes | None:
     return b"BM" + struct.pack("<IHHI", 14 + len(dib), 0, 0, off) + dib
 
 
+def blip_looks_valid(data: bytes, mime: str) -> bool:
+    """Cheap structural check that a picture can be decoded (no decoder is run).
+
+    LibreOffice drops pictures its graphic filters reject (e.g. a PNG cut off before IEND,
+    sc/qa/unit/data/xls/emptyAnchor.xls). PNG: signature, IHDR first, chunk lengths inside the
+    data, IEND reached ([PNG] 5.3, 11.2.1). JPEG: SOI and a start-of-frame marker with sane
+    dimensions. GIF: signature and logical screen descriptor. Other types are not judged."""
+    # LibreOffice sniffs the content, not the BLIP type (a "PNG" BLIP may hold a GIF)
+    if data[:4] == b"\x89PNG":
+        if data[:8] != b"\x89PNG\r\n\x1a\n" or len(data) < 33:
+            return False
+        pos = 8
+        first = True
+        while pos + 12 <= len(data):
+            ln, typ = struct.unpack_from(">I4s", data, pos)
+            if first and (typ != b"IHDR" or ln != 13):
+                return False
+            first = False
+            if pos + 12 + ln > len(data):
+                return False
+            if typ == b"IEND":
+                return True
+            pos += 12 + ln
+        return False
+    if data[:2] == b"\xff\xd8":
+        if data[:3] != b"\xff\xd8\xff":
+            return False
+        pos = 2
+        while pos + 4 <= len(data):
+            if data[pos] != 0xFF:
+                return False
+            m = data[pos + 1]
+            if m == 0xFF:
+                pos += 1
+                continue
+            if m in (0x01,) or 0xD0 <= m <= 0xD8:
+                pos += 2
+                continue
+            ln = struct.unpack_from(">H", data, pos + 2)[0]
+            if m in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                return ln >= 8 and pos + 9 <= len(data) and struct.unpack_from(">HH", data, pos + 5)[0] > 0 \
+                    and struct.unpack_from(">H", data, pos + 7)[0] > 0
+            if m == 0xDA:  # scan before any frame header
+                return False
+            pos += 2 + ln
+        return False
+    if data[:3] == b"GIF":
+        return data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 13 and data[6:10] != b"\0\0\0\0"
+    return True
+
+
+def dib_complete(dib: bytes) -> bool:
+    """True when a packed DIB holds all its pixel data (vcl ReadDIB fails on a short bitmap).
+    Only BI_RGB bitmaps are measured; compressed ones are accepted when the header is sane."""
+    if len(dib) < 12:
+        return False
+    hsize = struct.unpack_from("<I", dib, 0)[0]
+    if hsize == 12:
+        w, h, planes, bits = struct.unpack_from("<HHHH", dib, 4)
+        colors = (1 << bits) * 3 if bits <= 8 else 0
+        comp = 0
+    elif 40 <= hsize <= len(dib):
+        w, h = struct.unpack_from("<ii", dib, 4)
+        bits, comp, _sz, _xp, _yp, used = struct.unpack_from("<HIIiiI", dib, 14)
+        h = abs(h)
+        if used == 0 and bits <= 8:
+            used = 1 << bits
+        colors = min(used, 1 << 16) * 4
+    else:
+        return False
+    if w <= 0 or h <= 0 or bits not in (1, 4, 8, 16, 24, 32) or w > 1 << 16 or h > 1 << 16:
+        return False
+    if comp != 0:
+        return len(dib) > hsize + colors
+    stride = ((w * bits + 31) // 32) * 4
+    return len(dib) >= hsize + colors + stride * h
+
+
+def wmf_looks_valid(d: bytes) -> bool:
+    """ReadWindowMetafile accepts a placeable header (key 0x9AC6CDD7) or a plain METAHEADER."""
+    if len(d) >= 22 and struct.unpack_from("<I", d, 0)[0] == 0x9AC6CDD7:
+        d = d[22:]
+    return len(d) >= 18 and struct.unpack_from("<HH", d, 0)[0] in (1, 2) and struct.unpack_from("<H", d, 2)[0] == 9
+
+
 # ------------------------------------------------------------- OfficeArt
 # Record types, [MS-ODRAW] 2.2.x.
 _RT_DGG_CONTAINER = 0xF000

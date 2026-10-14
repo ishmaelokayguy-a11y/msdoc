@@ -2,7 +2,7 @@
 
 [English](README.md) · **Русский**
 
-Извлечение **текста, структуры и изображений** из бинарных файлов Word 97–2003 (`.doc`) на чистом Python.
+Извлечение **текста, структуры и изображений** из бинарных файлов Word 97–2003 (`.doc`) — и тем же API из книг Excel 97–2003 (`.xls`) и презентаций PowerPoint 97–2003 (`.ppt`) — на чистом Python.
 Результат — готовый **Markdown** (заголовки, списки, таблицы в HTML, ссылки, сноски) и картинки
 отдельным списком байтов с указанием MIME. Подходит, чтобы подавать документы в LLM.
 
@@ -39,7 +39,7 @@ for i, im in enumerate(media):                   # media[i] <-> ![Media i](image
 Из готового колеса (зависимостей нет, интернет не нужен):
 
 ```bash
-python3 -m pip install msdoc-0.2.0-py3-none-any.whl
+python3 -m pip install msdoc-0.3.0-py3-none-any.whl
 ```
 
 Из исходников (каталог `src/` достаточно добавить в `PYTHONPATH`, установка не обязательна):
@@ -162,12 +162,38 @@ for b in doc.blocks:
 `images` (индексы в `doc.images`), `notes`, `links`. В тексте картинки обозначены символом `U+FFFC`,
 ссылки на сноски — `U+E000`. Подробности — в [docs/ru/api.md](docs/ru/api.md).
 
+## Excel (.xls) и PowerPoint (.ppt)
+
+`msdoc.extract` и `msdoc.to_markdown` определяют формат по потокам OLE (`WordDocument`, `Workbook`,
+`PowerPoint Document`), поэтому вызовы те же, что для `.doc`; `doc.format` — `"doc"`, `"xls"` или `"ppt"`.
+
+```python
+doc = msdoc.extract("book.xls")
+for sheet in doc.sheets:                        # Sheet: name, hidden, cells, merges, links, images
+    print(sheet.name, sheet.cells.get((0, 0)))  # cells: {(строка, столбец): показанный текст}, с нуля
+
+doc = msdoc.extract("talk.ppt")
+for slide in doc.slides:                        # Slide: index, texts, notes, comments, images
+    print(slide.index, slide.texts, slide.notes)
+```
+
+- **Excel**: только BIFF8. Текст ячейки — то, что *показывают* Excel/LibreOffice (применены числовые форматы,
+  даты, дроби; для формул берётся последнее сохранённое значение). Markdown: заголовок `## Лист` и HTML-таблица
+  на каждый видимый лист, объединённые ячейки — `rowspan`/`colspan`. Картинки привязаны к ячейкам.
+- **PowerPoint**: последняя сохранённая версия каждого слайда (в том числе при повреждённой истории правок),
+  заголовки, основной текст, надписи, заметки докладчика, комментарии рецензентов и картинки. Markdown:
+  `## Slide N`, заголовки как `###`, основной текст маркированным списком, затем `Comments` и `Notes`.
+- Не поддерживаются (`UnsupportedFormatError`): Excel 2–7 (BIFF2–5), PowerPoint 4/95; файлы с паролем дают
+  `EncryptedDocumentError`. Диаграммы, встроенные OLE-объекты, макросы, геометрия фигур и анимации игнорируются.
+- Качество измерено относительно LibreOffice так же, как для `.doc` (`oracle/office_*.py`, см.
+  [docs/ru/quality.md](docs/ru/quality.md)): около 0,97 (`.xls`) и 0,92–0,95 (`.ppt`) по сводной оценке текст/картинки.
+
 ## Ошибки
 
 | Исключение | Когда |
 |---|---|
 | `NotOleFileError` | вход — не контейнер OLE2 (не `.doc`) |
-| `UnsupportedFormatError` | Word 6/95/2.0 (до Word 97) или OLE-файл без потока `WordDocument` |
+| `UnsupportedFormatError` | Word 6/95/2.0 (до Word 97), Excel 2–7, PowerPoint 4/95 или OLE-файл, не являющийся ни одним из трёх |
 | `EncryptedDocumentError` | документ зашифрован паролем |
 | `CorruptDocumentError` | контейнер или структуры Word повреждены и восстановить их нельзя |
 
@@ -180,7 +206,12 @@ for b in doc.blocks:
 python3 examples/to_markdown.py входной_каталог выходной_каталог --jobs 4 --timeout 60
 python3 examples/to_markdown.py report.doc                 # -> report.md и report_media/
 python3 examples/extract_folder.py входной выходной        # text.txt + stories.json + images/
+python3 examples/office_formats.py book.xls                # листы / ячейки
+python3 examples/office_formats.py deck.ppt --markdown     # слайды в Markdown
 ```
+
+В каталоге могут лежать вперемешку `.doc`, `.xls` и `.ppt`; для двух последних `to_markdown.py` пишет
+`name.xls.md` / `name.ppt.md`, одинаковые имена не конфликтуют.
 
 Каждый файл обрабатывается в отдельном процессе с жёстким таймаутом, поэтому «плохой» файл не
 останавливает пакет. В `to_markdown.py` заглушки заменяются относительными ссылками на сохранённые
@@ -190,7 +221,7 @@ python3 examples/extract_folder.py входной выходной        # text
 
 Коротко (подробнее — [docs/ru/limitations.md](docs/ru/limitations.md)):
 
-- Только `.doc` формата Word 97–2003 (`nFib ≥ 0xC1`). `.docx`, `.rtf`, Word 6/95 — нет.
+- Только `.doc` Word 97–2003 (`nFib ≥ 0xC1`), `.xls` Excel 97–2003 и `.ppt` PowerPoint 97–2003. `.docx`/`.xlsx`/`.pptx`, `.rtf` и форматы до 97-го — нет.
 - Зашифрованные документы не расшифровываются (`EncryptedDocumentError`).
 - Из форматирования передаются только структурные элементы (заголовки, списки, таблицы, ссылки, сноски);
   шрифты, цвета, выравнивание, жирный/курсив не передаются.

@@ -2,7 +2,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Извлечь текст и картинки из всех .doc в каталоге (с жёстким таймаутом на файл).
+"""Извлечь текст и картинки из всех .doc, .xls и .ppt в каталоге (с жёстким таймаутом на файл).
 
     python3 examples/extract_folder.py ВХОДНОЙ_КАТАЛОГ ВЫХОДНОЙ_КАТАЛОГ [--jobs 4] [--timeout 60] [--no-images]
 
@@ -24,6 +24,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+SUFFIXES = {".doc", ".xls", ".ppt"}
 EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp": "bmp", "image/tiff": "tif",
        "image/x-wmf": "wmf", "image/x-emf": "emf", "image/x-pict": "pct"}
 
@@ -80,11 +81,11 @@ def main() -> None:
     if not (args.src and args.dst):
         ap.error("нужны входной и выходной каталоги")
 
-    files = sorted(p for p in args.src.rglob("*") if p.is_file() and p.suffix.lower() == ".doc")
+    files = sorted(p for p in args.src.rglob("*") if p.is_file() and p.suffix.lower() in SUFFIXES)
     args.dst.mkdir(parents=True, exist_ok=True)
 
     def job(p: Path) -> dict:
-        name = "__".join(p.relative_to(args.src).with_suffix("").parts)
+        name = "__".join(p.relative_to(args.src).with_suffix("").parts) + ("" if p.suffix.lower() == ".doc" else p.suffix.lower().replace(".", "_"))
         return run_isolated(p, args.dst / name, args)
 
     counts: dict[str, int] = {}

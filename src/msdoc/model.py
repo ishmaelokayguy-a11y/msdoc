@@ -103,10 +103,49 @@ Block = Union[Paragraph, Table]
 
 
 @dataclass
+class Sheet:
+    """One worksheet of an .xls workbook. Coordinates are 0-based (row, column)."""
+    name: str
+    hidden: bool = False
+    cells: dict = field(default_factory=dict)
+    """(row, col) -> displayed text (numbers and dates already formatted)."""
+    merges: list = field(default_factory=list)
+    """(row, col, rows, cols) of every merged range."""
+    links: dict = field(default_factory=dict)
+    """(row, col) -> URL of a hyperlink cell."""
+    images: list = field(default_factory=list)
+    """(row, col, index into Document.images) anchored pictures."""
+
+
+@dataclass
+class Slide:
+    """One slide of a .ppt presentation."""
+    index: int
+    """1-based position in the slide show."""
+    texts: list = field(default_factory=list)
+    """Paragraphs of all text shapes of the slide, in z-order."""
+    notes: list = field(default_factory=list)
+    """Paragraphs of the speaker notes."""
+    comments: list = field(default_factory=list)
+    """Texts of the review comments."""
+    images: list = field(default_factory=list)
+    """Indexes into Document.images of the pictures on the slide."""
+    links: list = field(default_factory=list)
+    """(text, url) of the hyperlinks of the slide (http/mailto/file targets as written, "#title" for
+    slides); the text is the linked run, or the shape text / friendly name for shape-level links."""
+
+
+@dataclass
 class Document:
     stories: dict[str, list[str]] = field(default_factory=lambda: {k: [] for k in STORY_KEYS})
     images: list[Image] = field(default_factory=list)
     nfib: Optional[int] = None
+    format: str = "doc"
+    """"doc", "xls" or "ppt"."""
+    sheets: list = field(default_factory=list)
+    """Worksheets (format == "xls")."""
+    slides: list = field(default_factory=list)
+    """Slides (format == "ppt")."""
     warnings: list[str] = field(default_factory=list)
     """Non-fatal problems (skipped structures, recovered corruption)."""
     blocks: list[Block] = field(default_factory=list)

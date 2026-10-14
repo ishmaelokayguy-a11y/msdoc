@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from typing import BinaryIO, NamedTuple, Union
 
-from . import blocks as blocks_mod, cfb, fib as fibmod, images, pieces, props, stories
+from . import blocks as blocks_mod, cfb, fib as fibmod, images, pieces, ppt, props, stories, xls
 from .errors import CorruptDocumentError, MsDocError, UnsupportedFormatError
 from .model import Document, Image
 
@@ -33,6 +33,8 @@ Source = Union[str, os.PathLike, bytes, bytearray, BinaryIO]
 # Word 6/7/8 are only read from an OLE storage. So a flat file starting with
 # 0xA5DC is not a document LibreOffice opens as Word: NotOleFileError.
 _LEGACY_WIDENTS = (b"\x9b\xa5", b"\x9c\xa5", b"\xdb\xa5")
+# Flat BIFF2/3/4 worksheets: a BOF record (id, length) at offset 0 ([MS-XLS] BOF, Excel 2.x-4.0).
+_LEGACY_BIFF = (b"\x09\x00\x04\x00", b"\x09\x02\x06\x00", b"\x09\x04\x06\x00")
 
 
 def _read(source: Source) -> bytes:
@@ -57,16 +59,43 @@ def _open_table(container, f):
     raise CorruptDocumentError("neither 0Table nor 1Table present")
 
 
+def _extract_other(container, images_enabled: bool):
+    """Excel / PowerPoint workbooks stored in the same kind of container."""
+    if container.exists("Workbook"):
+        doc = xls.parse(bytes(container.open_stream("Workbook")),
+                        {n.split("/", 1)[0].upper() for n in container.list_streams() if "/" in n})
+        if not images_enabled:
+            doc.images = []
+            for sh in doc.sheets:
+                sh.images = []
+            xls._build_blocks(doc)
+        return doc
+    if container.exists("Book"):
+        raise UnsupportedFormatError("Excel 5/95 workbook (only Excel 97-2003 is supported)")
+    pre = "PP97_DUALSTORAGE/" if container.exists("PP97_DUALSTORAGE/PowerPoint Document") else ""
+    if container.exists(pre + "PowerPoint Document"):
+        def stream(name):
+            return bytes(container.open_stream(pre + name)) if container.exists(pre + name) else b""
+        return ppt.parse(stream("PowerPoint Document"), stream("Pictures"), stream("Current User"), images_enabled)
+    if container.exists("PP40"):
+        raise UnsupportedFormatError("PowerPoint 4.0 presentation (only PowerPoint 97-2003 is supported)")
+    return None
+
+
 def extract(source: Source, *, images_enabled: bool = True) -> Document:
     """Extract text stories and images from a Word 97-2003 .doc file.
 
     Raises only MsDocError subclasses.
     """
     data = _read(source)
-    if data[:8] != cfb.CFB_SIGNATURE and bytes(data[:2]) in _LEGACY_WIDENTS:
-        raise UnsupportedFormatError("legacy non-OLE Word binary (Word 1/2)")
+    if data[:8] != cfb.CFB_SIGNATURE and (bytes(data[:2]) in _LEGACY_WIDENTS or bytes(data[:4]) in _LEGACY_BIFF):
+        raise UnsupportedFormatError("legacy non-OLE binary (Word 1/2 or Excel 2-4)")
     try:
         container = cfb.CompoundFile(data)
+        if not container.exists("WordDocument"):
+            other = _extract_other(container, images_enabled)
+            if other is not None:
+                return other
         word_document = container.open_stream("WordDocument")
         f = fibmod.parse_fib(word_document)
         table, table_warning = _open_table(container, f)
